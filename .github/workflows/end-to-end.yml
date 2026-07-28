@@ -77,6 +77,6 @@ jobs:
       - name: Install Playwright Chromium
         run: python -m playwright install --with-deps chromium
       - name: Prepare site
-        run: python-cad clean --project-root . && python-cad build --project-root . && python-cad prepare-site --project-root . --destination site --base-path /benge-property-cad/
+        run: python-cad clean --project-root . && python-cad build --project-root . && python-cad prepare-site --project-root . --destination site --base-path /file-template-cad/
       - name: Site and browser E2E tests
         run: python -m pytest -q -m e2e tests/test_viewer_e2e.py

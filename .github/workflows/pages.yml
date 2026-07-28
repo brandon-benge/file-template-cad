@@ -52,7 +52,7 @@ jobs:
       - name: Verify
         run: python-cad verify --project-root .
       - name: Prepare site
-        run: python-cad prepare-site --project-root . --destination site --base-path /benge-property-cad/
+        run: python-cad prepare-site --project-root . --destination site --base-path /file-template-cad/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
