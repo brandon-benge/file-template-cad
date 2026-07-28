@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stop UI"
+  short_description: "Stop the local CAD viewer safely"
+  default_prompt: "Stop the local CAD viewer if it is running."

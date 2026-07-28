@@ -1,0 +1,4 @@
+interface:
+  display_name: "Python CAD Tools Upgrader"
+  short_description: "Upgrade python-cad-tools with version-aware testing"
+  default_prompt: "Upgrade python-cad-tools and select basic or full verification from the semantic version change."

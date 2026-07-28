@@ -1,0 +1,140 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "file-design-maintainer",
+  "permission": {
+    "specrepo-autocommit": "deny",
+    "start-ui": "deny",
+    "stop-ui": "deny",
+    "upgrade-ui": "deny"
+  },
+  "agent": {
+    "plan": { "disable": true },
+    "build": { "disable": true },
+    "specrepo-bootstrapper": { "disable": true },
+    "request-author": { "disable": true },
+    "spec-reviewer": { "disable": true },
+    "architecture-approver": { "disable": true },
+    "implementation-reviewer": { "disable": true },
+    "spec-coder": { "disable": true },
+    "test-reviewer": { "disable": true },
+    "file-design-maintainer": {
+      "description": "Design and CAD source maintainer. Edits config.py, model.py, and drawing_annotations.py using public installed python_cad_tools API.",
+      "mode": "primary",
+      "temperature": 0.1,
+      "prompt": "You are the File Design Maintainer. Edit only config.py, model.py, and drawing_annotations.py. Use only the documented public python_cad_tools API. Never read or patch tooling source or site-packages. Preserve stable complex.* element IDs. Run python-cad build and applicable tests (build, viewer, workflow-policy) after changes. Design-input validation tests have been removed; do not re-create them. Agents must not update model-specific test assertions (IFC mappings, element IDs, annotation content, dimensions, positions, materials) in any test file. Never invoke Git directly. Use save only after the user explicitly asks to commit the changes to Git.",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "skill": { "*": "deny", "file-design-maintainer": "allow", "start-ui": "allow", "stop-ui": "allow", "upgrade-ui": "allow", "save": "allow" },
+        "task": {
+          "*": "deny",
+          "file-artifact-reviewer": "allow",
+          "cad-compatibility-verifier": "allow"
+        },
+        "specrepo-autocommit": "allow",
+        "start-ui": "allow",
+        "stop-ui": "allow",
+        "upgrade-ui": "allow",
+        "edit": "allow",
+        "bash": "allow",
+        "lsp": "allow",
+        "external_directory": "ask",
+        "todowrite": "allow",
+        "webfetch": "ask",
+        "websearch": "ask",
+        "question": "allow"
+      }
+    },
+    "file-artifact-reviewer": {
+      "description": "Read-only reviewer of generated CAD artifacts, manifests, drawings, and site content.",
+      "mode": "subagent",
+      "hidden": true,
+      "temperature": 0.1,
+      "prompt": "You are the File Artifact Reviewer. Review only artifacts under generated/. Consolidate architectural, structural, site, plumbing, and electrical feedback. Never read Python, test, configuration, or governance source. Never edit files. Delegate source changes to file-design-maintainer.",
+      "permission": {
+        "read": { "*": "deny", "generated/**": "allow", "**/generated/**": "allow" },
+        "glob": { "*": "deny", "generated/**": "allow", "**/generated/**": "allow" },
+        "grep": { "*": "deny", "generated/**": "allow", "**/generated/**": "allow" },
+        "list": { "*": "deny", "generated/**": "allow", "**/generated/**": "allow" },
+        "skill": { "*": "deny", "file-artifact-reviewer": "allow", "start-ui": "allow", "stop-ui": "allow", "upgrade-ui": "allow", "save": "allow" },
+        "task": {
+          "*": "deny",
+          "file-design-maintainer": "allow",
+          "cad-compatibility-verifier": "allow"
+        },
+        "specrepo-autocommit": "allow",
+        "start-ui": "allow",
+        "stop-ui": "allow",
+        "upgrade-ui": "allow",
+        "edit": "deny",
+        "bash": "deny",
+        "lsp": "deny",
+        "external_directory": "deny",
+        "todowrite": "allow",
+        "webfetch": "ask",
+        "websearch": "ask",
+        "question": "allow"
+      }
+    },
+    "cad-compatibility-verifier": {
+      "description": "Independent read-only verifier of the active environment, pinned PyPI CAD package, declared checks, and generated artifact structures.",
+      "mode": "subagent",
+      "hidden": true,
+      "temperature": 0,
+      "prompt": "You are the CAD Compatibility Verifier. Operate against the current project directory and inspect the active Python environment before installing or changing anything. Verify the pinned python-cad-tools PyPI distribution, selected dependency lock, installed version, resolved module path, and python-cad executable. Default to basic non-E2E testing. Run full build, determinism, site, HTTP, browser, and other E2E checks only for a minor or major python-cad-tools change, an explicitly requested full upgrade, or an explicit E2E request. A patch-only change such as 0.1.4 to 0.1.5 does not require E2E. Report skipped checks and reasons. Never edit files, fix failures, use a source checkout or editable install, or invoke Git directly. Use save only after the user explicitly asks to commit the changes to Git. Delegate confirmed source defects to file-design-maintainer and artifact-review findings to file-artifact-reviewer. Return a machine-readable compatibility report.",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "skill": { "*": "deny", "cad-compatibility-verifier": "allow", "start-ui": "allow", "stop-ui": "allow", "upgrade-ui": "allow", "save": "allow" },
+        "task": {
+          "*": "deny",
+          "file-design-maintainer": "allow",
+          "file-artifact-reviewer": "allow"
+        },
+        "specrepo-autocommit": "allow",
+        "start-ui": "allow",
+        "stop-ui": "allow",
+        "upgrade-ui": "allow",
+        "edit": "deny",
+        "bash": "allow",
+        "lsp": "deny",
+        "external_directory": "ask",
+        "todowrite": "allow",
+        "webfetch": "allow",
+        "websearch": "allow",
+        "question": "allow"
+      }
+    },
+    "python-cad-tools-upgrader": {
+      "description": "Upgrade the published python-cad-tools dependency and apply semantic-version-aware testing.",
+      "mode": "primary",
+      "hidden": true,
+      "temperature": 0,
+      "prompt": "You are the Python CAD Tools Upgrader. Use the python-cad-tools-upgrader skill for dependency changes. Edit only pyproject.toml and dependency lockfiles. For patch-only upgrades run basic checks and never E2E unless explicitly requested. For minor, major, or explicitly full upgrades run complete E2E verification. Never use local or editable package source or invoke Git directly. Use save only after the user explicitly asks to commit the changes to Git.",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "skill": { "*": "deny", "python-cad-tools-upgrader": "allow", "start-ui": "allow", "stop-ui": "allow", "upgrade-ui": "allow", "save": "allow" },
+        "task": "deny",
+        "specrepo-autocommit": "allow",
+        "start-ui": "allow",
+        "stop-ui": "allow",
+        "upgrade-ui": "allow",
+        "edit": { "*": "deny", "pyproject.toml": "allow", "requirements/*.lock": "allow", "requirements/locks/*.lock": "allow" },
+        "bash": "allow",
+        "lsp": "deny",
+        "external_directory": "ask",
+        "todowrite": "allow",
+        "webfetch": "ask",
+        "websearch": "ask",
+        "question": "allow"
+      }
+    }
+  }
+}

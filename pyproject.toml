@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "file-template-cad"
+version = "0.1.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "python-cad-tools>=0.1.7,<0.2",
+  "build123d>=0.11.1,<0.12",
+  "ifcopenshell>=0.8.5,<0.9",
+  "trimesh>=4.12,<5",
+  "numpy>=2.3,<3",
+  "ezdxf>=1.4,<2",
+  "reportlab>=4.4,<5",
+  "pypdf>=6,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.14.14",
+  "mypy>=1.20.2",
+  "pytest-cov>=7.1.0",
+  "pytest-timeout>=2.3.1,<3",
+  "pytest-xdist>=3.7,<4",
+  "playwright>=1.50,<2",
+]
+
+[tool.python-cad]
+schema-version = 1
+config = "config"
+model = "model:build_model"
+drawing-annotations = "drawing_annotations:build_annotations"
+source-inputs = ["config.py", "drawing_annotations.py", "model.py", "pyproject.toml"]
+output-directory = "generated"
+default-formats = ["step", "ifc", "glb", "drawings", "quantities"]
+
+[tool.setuptools.packages.find]
+include = []
+
+[tool.pytest.ini_options]
+addopts = "-q --timeout=120 --timeout-method=thread"
+markers = [
+  "integration: Artifact and export integration tests",
+  "viewer: Viewer and local HTTP behavior tests",
+  "e2e: End-to-end tests requiring external services, sockets, or browsers",
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["config.py", "model.py", "drawing_annotations.py", "tests/"]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+exclude = [".tools", ".venv", "generated", "backup", ".back_agents", ".back_opencode"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501"]

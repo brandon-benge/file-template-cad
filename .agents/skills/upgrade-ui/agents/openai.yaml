@@ -1,0 +1,4 @@
+interface:
+  display_name: "Upgrade UI"
+  short_description: "Upgrade dependencies and restart the CAD viewer"
+  default_prompt: "Upgrade the local CAD project and start its viewer."

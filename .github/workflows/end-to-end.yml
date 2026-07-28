@@ -1,0 +1,82 @@
+name: File Template CAD End-to-End
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: end-to-end-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_NO_CACHE_DIR: 1
+
+jobs:
+  full-build-verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+        python-version: ["3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Select native lock
+        id: lock
+        shell: python
+        run: |
+          import os, platform, sys
+          os_name = {"Linux": "ubuntu", "Darwin": "macos"}[platform.system()]
+          py = sys.version_info
+          path = f"requirements/locks/dev-{os_name}-{platform.machine()}-py{py.major}{py.minor}.lock"
+          print(f"path={path}", file=open(os.environ["GITHUB_OUTPUT"], "a"))
+      - name: Install dev lock
+        run: |
+          pip install --require-hashes -r ${{ steps.lock.outputs.path }}
+          pip check
+      - name: Validate, build, and verify
+        run: |
+          python-cad validate --project-root .
+          python-cad clean --project-root .
+          python-cad build --project-root .
+          python-cad verify --project-root .
+      - name: Full build tests
+        run: |
+          python -m pytest -q tests/test_build_artifacts.py tests/test_build_cli.py
+
+  determinism-recovery:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dev lock
+        run: |
+          pip install --require-hashes -r requirements/locks/dev-ubuntu-x86_64-py313.lock
+          pip check
+      - name: Determinism and recovery tests
+        run: python -m pytest -q tests/test_build_determinism.py
+
+  site-browser-e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dev lock
+        run: |
+          pip install --require-hashes -r requirements/locks/dev-ubuntu-x86_64-py313.lock
+          pip check
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Prepare site
+        run: python-cad clean --project-root . && python-cad build --project-root . && python-cad prepare-site --project-root . --destination site --base-path /benge-property-cad/
+      - name: Site and browser E2E tests
+        run: python -m pytest -q -m e2e tests/test_viewer_e2e.py

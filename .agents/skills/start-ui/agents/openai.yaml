@@ -1,0 +1,4 @@
+interface:
+  display_name: "Start UI"
+  short_description: "Build and start the local CAD viewer"
+  default_prompt: "Start the local CAD viewer and report its URL."

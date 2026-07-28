@@ -1,0 +1,192 @@
+name: File Template CAD CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_NO_CACHE_DIR: 1
+
+jobs:
+  locked-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+        python-version: ["3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install pip-tools
+        run: pip install pip-tools
+      - name: Regenerate native dev lock
+        id: lock
+        shell: python
+        run: |
+          import os, sys, platform, subprocess
+          os_name = {"Linux": "ubuntu", "Darwin": "macos"}[platform.system()]
+          arch = platform.machine()
+          py = sys.version_info
+          lock = f"dev-{os_name}-{arch}-py{py.major}{py.minor}.lock"
+          lock_path = f"requirements/locks/{lock}"
+          os.makedirs("requirements/locks", exist_ok=True)
+          subprocess.run(
+              [
+                  "pip-compile", "--extra=dev", "--generate-hashes",
+                  "--output-file", lock_path, "pyproject.toml",
+              ],
+              check=True, capture_output=True, text=True,
+          )
+          print(f"lock_path={lock_path}", file=open(os.environ["GITHUB_OUTPUT"], "a"))
+      - name: Install from lock
+        run: |
+          pip install --require-hashes -r ${{ steps.lock.outputs.lock_path }}
+          pip check
+      - name: Record lock SHA-256
+        run: shasum -a 256 ${{ steps.lock.outputs.lock_path }}
+      - name: Upload regenerated dev lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-lock-${{ matrix.os }}-${{ matrix.python-version }}
+          path: ${{ steps.lock.outputs.lock_path }}
+
+  static-analysis:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pip-tools
+        run: pip install pip-tools
+      - name: Generate dev lock
+        run: |
+          pip-compile --extra=dev --generate-hashes \
+            --output-file=requirements/locks/dev-ubuntu-x86_64-py313.lock \
+            pyproject.toml
+      - name: Install dev lock
+        run: |
+          pip install --require-hashes -r requirements/locks/dev-ubuntu-x86_64-py313.lock
+          pip check
+      - name: Ruff lint
+        run: ruff check config.py model.py drawing_annotations.py tests/
+      - name: Ruff format
+        run: ruff format --check config.py model.py drawing_annotations.py tests/
+      - name: Mypy
+        run: mypy config.py model.py drawing_annotations.py tests/
+
+  boundary-governance:
+    runs-on: ubuntu-24.04
+    outputs:
+      python_cad_tools_version: ${{ steps.dependency_boundary.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pip-tools
+        run: pip install pip-tools
+      - name: Generate dev lock
+        run: |
+          pip-compile --extra=dev --generate-hashes \
+            --output-file=requirements/locks/dev-ubuntu-x86_64-py313.lock \
+            pyproject.toml
+      - name: Install dev lock
+        run: |
+          pip install --require-hashes -r requirements/locks/dev-ubuntu-x86_64-py313.lock
+          pip check
+      - name: Dependency boundary check
+        id: dependency_boundary
+        run: |
+          python -c "
+          import importlib.metadata, os, tomllib
+          from packaging.requirements import Requirement
+          from packaging.version import Version
+          with open('pyproject.toml', 'rb') as f:
+              deps = tomllib.load(f)['project']['dependencies']
+          expected = Requirement(next(d for d in deps if d.startswith('python-cad-tools')))
+          ver = importlib.metadata.version('python-cad-tools')
+          print(f'python-cad-tools version: {ver}')
+          assert Version(ver) in expected.specifier, f'Expected {expected}, got {ver}'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f'version={ver}', file=output)
+          "
+          python -c "
+          import python_cad_tools
+          assert 'site-packages' in python_cad_tools.__file__, f'Not installed: {python_cad_tools.__file__}'
+          print(f'Package location: {python_cad_tools.__file__}')
+          "
+      - name: Symlink check
+        run: |
+          for link in .opencode/agents .opencode/skills; do
+            if test -L "$link"; then
+              target="$(readlink "$link")"
+              echo "Checking $link -> $target"
+              test -e "$link" || { echo "BROKEN: $link"; exit 1; }
+              resolved="$(readlink -f "$link")"
+              case "$resolved" in
+                "$PWD"/*) echo "  contained: $resolved" ;;
+                *) echo "  OUTSIDE REPO: $resolved"; exit 1 ;;
+              esac
+            else
+              echo "Not a symlink (or missing): $link"
+            fi
+          done
+      - name: Ignored output check
+        run: |
+          test -f generated/.gitkeep
+
+  compatibility-report:
+    needs:
+      - locked-install
+      - static-analysis
+      - boundary-governance
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cat <<JSON > compatibility-report.json
+          {
+            "plan_contract": "repo-split-v1",
+            "design_revision": "${{ github.sha }}",
+            "python_cad_tools_version": "${{ needs.boundary-governance.outputs.python_cad_tools_version }}",
+            "workflow_run_id": "${{ github.run_id }}",
+            "status": "completed",
+            "date": "${{ github.event.repository.updated_at }}"
+          }
+          JSON
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-report
+          path: compatibility-report.json
+
+  required-gate:
+    needs:
+      - compatibility-report
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          import json, sys
+          deps = json.loads(r'''${{ toJSON(needs) }}''')
+          for name, info in deps.items():
+              result = info.get("result", "skipped")
+              print(f"{name}: {result}")
+              if result != "success":
+                  print(f"FAILED: {name} did not complete successfully")
+                  sys.exit(1)
+          print("All dependencies passed")
+        shell: python
