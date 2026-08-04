@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 .venv312/
 .venv-local-cad/
+.ai-cad/worktrees/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
