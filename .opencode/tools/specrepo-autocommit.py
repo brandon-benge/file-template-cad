@@ -9,6 +9,7 @@ import site
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 AUTOCOMMIT_REPOSITORY = "git+https://github.com/brandon-benge/langchain_autocommit.git"
 CONFIGURATION_GUIDE = "https://github.com/brandon-benge/langchain_autocommit/blob/main/README.md#config-overrides"
@@ -25,7 +26,7 @@ def print_usage() -> None:
     )
 
 
-def fail(message: str, *, config_path: Path | None = None, code: int = 1) -> None:
+def fail(message: str, *, config_path: Path | None = None, code: int = 1) -> NoReturn:
     print(message, file=sys.stderr)
     if config_path is not None:
         print(f"AUTOCOMMIT_PARAMS location: {config_path}", file=sys.stderr)
