@@ -17,9 +17,10 @@ EX_USAGE = 64
 
 def print_usage() -> None:
     print(
-        'Usage: specrepo-autocommit "<summary of what changed>"\n\n'
+        'Usage: specrepo-autocommit "<summary of what changed>" [--no-push]\n\n'
         "Runs autocommit on the current git branch.\n"
-        "AUTOCOMMIT_PARAMS must point to an existing YAML configuration file.",
+        "AUTOCOMMIT_PARAMS must point to an existing YAML configuration file.\n"
+        "--no-push commits locally without pushing to the remote.",
         file=sys.stderr,
     )
 
@@ -140,20 +141,22 @@ def ensure_autocommit_installed(config_path: Path) -> str:
     return executable
 
 
-def run_autocommit(executable: str, config_path: Path, summary: str, branch: str) -> None:
+def run_autocommit(
+    executable: str, config_path: Path, summary: str, branch: str, no_push: bool = False
+) -> None:
     print(f"Running autocommit on branch {branch}.")
+    command = [
+        executable,
+        "--yes",
+        "--config-file",
+        str(config_path),
+        "-c",
+        summary,
+    ]
+    if no_push:
+        command.append("--no-push")
     try:
-        result = subprocess.run(
-            [
-                executable,
-                "--yes",
-                "--config-file",
-                str(config_path),
-                "-c",
-                summary,
-            ],
-            check=False,
-        )
+        result = subprocess.run(command, check=False)
     except OSError as error:
         fail(
             f"Autocommit failed to start: {error}",
@@ -171,7 +174,16 @@ def run_autocommit(executable: str, config_path: Path, summary: str, branch: str
 def main(argv: list[str]) -> int:
     config_path = get_config_path()
 
-    if len(argv) < 2 or not " ".join(argv[1:]).strip():
+    # Extract --no-push before joining the remainder into the summary.
+    no_push = False
+    positional: list[str] = []
+    for arg in argv[1:]:
+        if arg == "--no-push":
+            no_push = True
+        else:
+            positional.append(arg)
+
+    if not positional or not " ".join(positional).strip():
         print_usage()
         fail(
             "Autocommit blocked: a summary of what changed is required.",
@@ -179,10 +191,10 @@ def main(argv: list[str]) -> int:
             code=EX_USAGE,
         )
 
-    summary = " ".join(argv[1:]).strip()
+    summary = " ".join(positional).strip()
     branch = get_current_branch(config_path)
     executable = ensure_autocommit_installed(config_path)
-    run_autocommit(executable, config_path, summary, branch)
+    run_autocommit(executable, config_path, summary, branch, no_push=no_push)
     return 0
 
 
