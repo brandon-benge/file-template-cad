@@ -1,0 +1,2 @@
+{"type":"error","timestamp":1786029069392,"sessionID":"ses_0285f2cfeffebMcIHwTOBHc6Bd","error":{"name":"UnknownError","data":{"message":"Model not found: opencode-go/glm-5.2. Did you mean: glm-5.2?"}}}
+{"type":"error","timestamp":1786029069392,"sessionID":"ses_0285f2cfeffebMcIHwTOBHc6Bd","error":{"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details."}}}

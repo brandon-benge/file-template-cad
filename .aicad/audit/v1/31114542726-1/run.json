@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "run_id": "31114542726-1",
+  "source": "github-actions",
+  "github": {
+    "event_name": "issues",
+    "repository": "brandon-benge/file-template-cad",
+    "repository_id": "1315405636",
+    "workflow": "opencode",
+    "run_id": "31114542726",
+    "run_attempt": "1",
+    "actor": "brandon-benge",
+    "ref": "refs/heads/main",
+    "trigger_sha": "4c5701ed614ce9f3f5d5360c80a001af519b3515",
+    "issue": {
+      "number": 2,
+      "title": "Test 1.3",
+      "body": "## Request\n\nTurn the cube into a rectangle \n\n## Acceptance criteria\n\n- Complete the requested change and verify the project builds.\n\n## Publishing\n\nWait for approval after successful build evidence is recorded.\n\n<!-- ai-cad-request:v1 id=B7ED8830-1521-40F8-A859-2F0DAB99A2C5 sha256=3d9b59cda3cab383dbd59fe87bf980a72fb4d390707241566d8ad10301a57dae -->"
+    },
+    "comment": null
+  },
+  "opencode": {
+    "version": "1.15.2",
+    "model": "opencode-go/glm-5.2",
+    "agent": "file-design-maintainer",
+    "exit_code": 1
+  },
+  "started_at": "2026-08-06T15:11:07Z",
+  "completed_at": "2026-08-06T15:11:09Z",
+  "status": "failed",
+  "failure_stage": "opencode",
+  "starting_revision": "4c5701ed614ce9f3f5d5360c80a001af519b3515",
+  "candidate_changed_paths": [],
+  "validation": [
+    {
+      "command": "python-cad validate --project-root .",
+      "exit_code": 0
+    }
+  ],
+  "events": {
+    "original_bytes": 399,
+    "retained_bytes": 399,
+    "truncated": false,
+    "sha256": "51688374d456531adf94d66d6b6b4c1ce4180cfd7f198cdb17373908a82589a4"
+  }
+}
