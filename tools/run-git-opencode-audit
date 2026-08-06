@@ -5,11 +5,19 @@ readonly TRIGGER_FILE="${1:?Usage: $0 <trigger.json>}"
 readonly MODEL="${OPENCODE_MODEL:?OPENCODE_MODEL is required}"
 readonly AGENT="${OPENCODE_AGENT:?OPENCODE_AGENT is required}"
 readonly VALIDATOR="${AICAD_VALIDATION_EXECUTABLE:?AICAD_VALIDATION_EXECUTABLE is required}"
+readonly FAILURE_ARTIFACT_ROOT="${AICAD_FAILURE_ARTIFACT_DIR:?AICAD_FAILURE_ARTIFACT_DIR is required}"
 readonly MAX_EVENTS_BYTES=8388608
 readonly MAX_EVENT_LINE_BYTES=262144
+readonly MAX_STDERR_BYTES=1048576
 
 ROOT="$(git rev-parse --show-toplevel)"
 test "$ROOT" = "$(pwd -P)" || { echo "Run from the repository root" >&2; exit 64; }
+ARTIFACT_ROOT="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$FAILURE_ARTIFACT_ROOT")"
+case "$ARTIFACT_ROOT/" in
+  "$ROOT"/|"$ROOT"/*) echo "Failure artifact directory must be outside the repository" >&2; exit 64 ;;
+esac
+readonly ARTIFACT_ROOT
+mkdir -p "$ARTIFACT_ROOT"
 test -f "$TRIGGER_FILE" || { echo "Trigger file not found" >&2; exit 64; }
 jq -e '.run_id and .run_attempt and .repository_id and .issue.number' "$TRIGGER_FILE" >/dev/null
 
@@ -20,7 +28,9 @@ case "$GITHUB_RUN:$GITHUB_ATTEMPT" in
 esac
 readonly RUN_ID="${GITHUB_RUN}-${GITHUB_ATTEMPT}"
 readonly RUN_DIR=".aicad/audit/v1/${RUN_ID}"
+readonly FAILURE_RUN_DIR="$ARTIFACT_ROOT/$RUN_ID"
 test ! -e "$RUN_DIR" || { echo "Audit run already exists: $RUN_ID" >&2; exit 65; }
+test ! -e "$FAILURE_RUN_DIR" || { echo "Failure artifact already exists: $RUN_ID" >&2; exit 65; }
 
 readonly START_SHA="$(git rev-parse HEAD)"
 readonly TEMP_ROOT="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/aicad-audit.XXXXXX")"
@@ -108,13 +118,29 @@ json.dump({"original_bytes": total, "retained_bytes": retained, "truncated": tru
 PY
 
 cat > "$TEMP_ROOT/stderr-filter.py" <<'PY'
-import os, sys
+import json, os, sys
+limit = int(os.environ["AICAD_STDERR_LIMIT"])
 secrets = [value for value in (os.environ.get("OPENCODE_API_KEY", ""), os.environ.get("GITHUB_TOKEN", "")) if value]
+retained = 0
+total = 0
+truncated = False
+output = open(os.environ["AICAD_STDERR_FILE"], "wb")
 for text in sys.stdin:
+    total += len(text.encode("utf-8"))
     for secret in secrets:
         text = text.replace(secret, "[authentication protected]")
     sys.stderr.write(text)
     sys.stderr.flush()
+    encoded = text.encode("utf-8")
+    remaining = limit - retained
+    if remaining > 0:
+        chunk = encoded[:remaining]
+        output.write(chunk)
+        retained += len(chunk)
+    if len(encoded) > remaining:
+        truncated = True
+output.close()
+json.dump({"original_bytes": total, "retained_bytes": retained, "truncated": truncated}, open(os.environ["AICAD_STDERR_STATS"], "w"))
 PY
 
 set +e
@@ -122,13 +148,23 @@ export AICAD_EVENTS_LIMIT="$MAX_EVENTS_BYTES"
 export AICAD_EVENT_LINE_LIMIT="$MAX_EVENT_LINE_BYTES"
 export AICAD_EVENTS_FILE="$TEMP_RUN/events.jsonl"
 export AICAD_EVENTS_STATS="$TEMP_ROOT/events-stats.json"
+export AICAD_STDERR_LIMIT="$MAX_STDERR_BYTES"
+export AICAD_STDERR_FILE="$TEMP_ROOT/stderr.log"
+export AICAD_STDERR_STATS="$TEMP_ROOT/stderr-stats.json"
 opencode run --format json --model "$MODEL" --agent "$AGENT" -- "$prompt" \
   2> >(python3 "$TEMP_ROOT/stderr-filter.py") \
   | python3 "$TEMP_ROOT/filter.py"
 pipeline_status=("${PIPESTATUS[@]}")
 opencode_exit=${pipeline_status[0]}
 filter_exit=${pipeline_status[1]}
+wait || true
 set -e
+test -f "$TEMP_RUN/events.jsonl" || : > "$TEMP_RUN/events.jsonl"
+test -f "$TEMP_ROOT/events-stats.json" || printf '%s\n' \
+  '{"original_bytes":0,"retained_bytes":0,"truncated":false}' > "$TEMP_ROOT/events-stats.json"
+test -f "$TEMP_ROOT/stderr.log" || : > "$TEMP_ROOT/stderr.log"
+test -f "$TEMP_ROOT/stderr-stats.json" || printf '%s\n' \
+  '{"original_bytes":0,"retained_bytes":0,"truncated":false}' > "$TEMP_ROOT/stderr-stats.json"
 
 status="completed"
 failure_stage=""
@@ -166,9 +202,15 @@ for item in raw:
 json.dump(sorted(set(paths))[:2000], sys.stdout)
 ' > "$TEMP_ROOT/changed-paths.json"
 
+if test "$status" = "completed" && ! jq -e \
+  'all(. == "config.py" or . == "model.py" or . == "drawing_annotations.py")' \
+  "$TEMP_ROOT/changed-paths.json" >/dev/null; then
+  status="failed"
+  failure_stage="policy"
+fi
+
 if test "$status" = "completed" && test "$(jq length "$TEMP_ROOT/changed-paths.json")" -eq 0; then
   status="no_changes"
-  failure_stage="no_changes"
 fi
 
 completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -208,25 +250,47 @@ jq -n \
 
 test "$(wc -c < "$TEMP_RUN/run.json")" -le 262144 || { echo "Audit manifest exceeds V1 limit" >&2; exit 66; }
 
-if test "$status" != "completed"; then
-  # This checkout is disposable and was resolved above. Preserve only the
-  # finalized audit evidence on failure/no-change.
-  git reset --hard "$START_SHA"
-  git clean -fd -e .audit-venv/
+write_failure_artifact() {
+  mkdir "$FAILURE_RUN_DIR"
+  cp "$TEMP_RUN/run.json" "$TEMP_RUN/events.jsonl" "$FAILURE_RUN_DIR/"
+  cp "$TEMP_ROOT/stderr.log" "$FAILURE_RUN_DIR/stderr.log"
+  jq -n \
+    --arg run_id "$RUN_ID" \
+    --slurpfile events "$TEMP_ROOT/events-stats.json" \
+    --slurpfile stderr "$TEMP_ROOT/stderr-stats.json" \
+    '{artifact_schema_version: 1, run_id: $run_id, events: $events[0], stderr: $stderr[0]}' \
+    > "$FAILURE_RUN_DIR/artifact.json"
+}
+
+if test "$status" = "failed"; then
+  write_failure_artifact
+  echo "OpenCode transaction failed at $failure_stage; repository history was not changed" >&2
+  if test "$failure_stage" = "unexpected_commit"; then
+    git reset --hard "$START_SHA"
+  fi
+  if test "$filter_exit" -ne 0; then
+    exit "$filter_exit"
+  elif test "$opencode_exit" -ne 0; then
+    exit "$opencode_exit"
+  elif test "$validation_exit" -ne 0; then
+    exit "$validation_exit"
+  fi
+  exit 1
 fi
+
+# Keep an external safety copy until push succeeds so commit/push failures can
+# still be diagnosed without placing failure evidence in repository history.
+write_failure_artifact
 
 mkdir -p "$(dirname "$RUN_DIR")"
 mv "$TEMP_RUN" "$RUN_DIR"
 git add -A -- . ":(exclude).audit-venv"
 
-if test "$status" = "completed"; then
-  commit_message="chore(opencode): record AI execution $RUN_ID"
+if test "$status" = "no_changes"; then
+  commit_message="chore(opencode): record no-change AI execution $RUN_ID"
 else
-  commit_message="chore(opencode): record $status AI execution $RUN_ID"
+  commit_message="chore(opencode): record AI execution $RUN_ID"
 fi
 git commit -m "$commit_message"
 git push origin HEAD
-
-if test "$status" != "completed"; then
-  exit 1
-fi
+rm -rf "$FAILURE_RUN_DIR"

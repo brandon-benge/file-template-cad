@@ -44,7 +44,15 @@ def test_opencode_workflow_owns_a_bounded_audit_transaction():
     assert "PIPESTATUS" in runner
     assert "git commit" in runner
     assert "git push origin HEAD" in runner
-    assert "git reset --hard" in runner
+    assert "AICAD_FAILURE_ARTIFACT_DIR" in workflow
+    assert "AICAD_FAILURE_ARTIFACT_DIR" in runner
+    assert "Failure artifact directory must be outside the repository" in runner
+    assert "repository history was not changed" in runner
+    assert 'if test "$status" = "failed"' in runner
+    assert "write_failure_artifact" in runner
+    assert "MAX_STDERR_BYTES=1048576" in runner
+    assert "aicad-failure-artifacts" in workflow
+    assert ".aicad/audit/v1/${{ github.run_id }}" not in workflow
     assert "[authentication protected]" in runner
     assert "MAX_EVENTS_BYTES=8388608" in runner
     assert schema.is_file()

@@ -152,10 +152,12 @@ the exact blocker, evidence, and user input or access needed.
 ## Verification expectations
 
 GitHub-triggered OpenCode runs are distinct from local Mac AI requests. They
-are serialized by the repository workflow and persisted under
-`.aicad/audit/v1/`. Agents must not edit, delete, or overwrite an existing
-audit run directory and must not commit or push during that workflow; the
-repository audit runner exclusively owns validation and Git persistence.
+are serialized by the repository workflow. Accepted runs are persisted under
+`.aicad/audit/v1/`; failed or rejected runs never commit or push and retain
+bounded evidence only in GitHub Actions logs and temporary artifacts. Agents
+must not edit, delete, or overwrite an existing audit run directory and must
+not commit or push during that workflow; the repository audit runner
+exclusively owns validation and accepted Git persistence.
 
 Use the smallest verification tier that provides evidence proportional to the
 change. Do not run integration, viewer, or E2E tests by default for a localized

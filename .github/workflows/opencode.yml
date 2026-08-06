@@ -106,13 +106,14 @@ jobs:
           OPENCODE_MODEL: glm-5.2
           OPENCODE_AGENT: file-design-maintainer
           AICAD_VALIDATION_EXECUTABLE: .audit-venv/bin/python-cad
+          AICAD_FAILURE_ARTIFACT_DIR: ${{ runner.temp }}/aicad-failure-artifacts
         run: tools/run-git-opencode-audit "$RUNNER_TEMP/aicad-trigger.json"
 
-      - name: Upload audit evidence when commit or push fails
+      - name: Upload audit evidence when the transaction fails
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: opencode-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .aicad/audit/v1/${{ github.run_id }}-${{ github.run_attempt }}/
+          path: ${{ runner.temp }}/aicad-failure-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: ignore
           retention-days: 14

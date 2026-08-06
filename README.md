@@ -113,6 +113,16 @@ Regular CI runs locked installation, static analysis, and dependency-boundary
 checks. Full build, determinism, and browser E2E tests are available from GitHub
 Actions via the manually dispatched `File Template CAD End-to-End` workflow.
 
+## Git-triggered AI audit
+
+Authorized GitHub issues and `/oc` or `/opencode` comments enter one serialized
+OpenCode queue. An accepted changed run commits its project changes and
+`.aicad/audit/v1/<run-id>/` envelope together. An accepted request that needs no
+project edit creates an audit-only `no_changes` commit. Failed or rejected runs
+do not create or push a commit; their bounded, redacted diagnostic evidence is
+available in the failed GitHub Actions run and its 14-day artifact. This Git
+workflow is separate from AI requests made locally in the Mac app.
+
 ## Dependency updates
 
 The project currently allows `python-cad-tools>=0.1.4,<0.2`. A patch upgrade
