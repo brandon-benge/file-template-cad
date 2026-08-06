@@ -103,7 +103,7 @@ jobs:
         shell: bash
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          OPENCODE_MODEL: opencode-go/glm-5.2
+          OPENCODE_MODEL: glm-5.2
           OPENCODE_AGENT: file-design-maintainer
           AICAD_VALIDATION_EXECUTABLE: .audit-venv/bin/python-cad
         run: tools/run-git-opencode-audit "$RUNNER_TEMP/aicad-trigger.json"
