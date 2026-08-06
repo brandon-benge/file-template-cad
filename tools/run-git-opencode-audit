@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly TRIGGER_FILE="${1:?Usage: $0 <trigger.json>}"
+readonly MODEL="${OPENCODE_MODEL:?OPENCODE_MODEL is required}"
+readonly AGENT="${OPENCODE_AGENT:?OPENCODE_AGENT is required}"
+readonly VALIDATOR="${AICAD_VALIDATION_EXECUTABLE:?AICAD_VALIDATION_EXECUTABLE is required}"
+readonly MAX_EVENTS_BYTES=8388608
+readonly MAX_EVENT_LINE_BYTES=262144
+
+ROOT="$(git rev-parse --show-toplevel)"
+test "$ROOT" = "$(pwd -P)" || { echo "Run from the repository root" >&2; exit 64; }
+test -f "$TRIGGER_FILE" || { echo "Trigger file not found" >&2; exit 64; }
+jq -e '.run_id and .run_attempt and .repository_id and .issue.number' "$TRIGGER_FILE" >/dev/null
+
+GITHUB_RUN="$(jq -r '.run_id' "$TRIGGER_FILE")"
+GITHUB_ATTEMPT="$(jq -r '.run_attempt' "$TRIGGER_FILE")"
+case "$GITHUB_RUN:$GITHUB_ATTEMPT" in
+  *[!0-9:]*|:*|*:) echo "Invalid GitHub run identity" >&2; exit 64 ;;
+esac
+readonly RUN_ID="${GITHUB_RUN}-${GITHUB_ATTEMPT}"
+readonly RUN_DIR=".aicad/audit/v1/${RUN_ID}"
+test ! -e "$RUN_DIR" || { echo "Audit run already exists: $RUN_ID" >&2; exit 65; }
+
+readonly START_SHA="$(git rev-parse HEAD)"
+readonly TEMP_ROOT="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/aicad-audit.XXXXXX")"
+readonly TEMP_RUN="$TEMP_ROOT/$RUN_ID"
+mkdir -p "$TEMP_RUN"
+cp "$TRIGGER_FILE" "$TEMP_ROOT/trigger.json"
+
+python3 - "$TRIGGER_FILE" "$TEMP_ROOT/safe-trigger.json" <<'PY'
+import json, os, sys
+source, destination = sys.argv[1:]
+secrets = [value for value in (os.environ.get("OPENCODE_API_KEY", ""), os.environ.get("GITHUB_TOKEN", "")) if value]
+value = json.load(open(source))
+def protect(item):
+    if isinstance(item, dict): return {key: protect(child) for key, child in item.items()}
+    if isinstance(item, list): return [protect(child) for child in item]
+    if isinstance(item, str):
+        for secret in secrets: item = item.replace(secret, "[authentication protected]")
+    return item
+value = protect(value)
+value["issue"]["title"] = value["issue"].get("title", "")[:1024]
+value["issue"]["body"] = value["issue"].get("body", "")[:65536]
+if value.get("comment"):
+    value["comment"]["body"] = value["comment"].get("body", "")[:65536]
+json.dump(value, open(destination, "w"), separators=(",", ":"))
+PY
+
+cleanup() { rm -rf "$TEMP_ROOT"; }
+trap cleanup EXIT
+
+started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+event_name="$(jq -r '.event_name' "$TRIGGER_FILE")"
+issue_number="$(jq -r '.issue.number' "$TRIGGER_FILE")"
+issue_title="$(jq -r '.issue.title // ""' "$TRIGGER_FILE")"
+issue_body="$(jq -r '.issue.body // ""' "$TRIGGER_FILE")"
+comment_body="$(jq -r '.comment.body // ""' "$TRIGGER_FILE")"
+if test "$event_name" = "issue_comment"; then
+  request_text="$(printf '%s' "$comment_body" | sed -E '1s#^/(oc|opencode)([[:space:]]+)?##')"
+else
+  request_text="$issue_body"
+fi
+
+prompt="$(printf '%s\n\n%s\n\n%s' \
+  "Work on GitHub issue #$issue_number: $issue_title" \
+  "$request_text" \
+  'Follow repository governance. Make only requested source changes and run relevant checks. Do not run git, commit, push, or edit .aicad/audit; the workflow owns validation and Git persistence.')"
+
+# Filter stdout before both display and persistence. Exact known credentials
+# are replaced, oversized lines are represented by a valid JSON marker, and
+# the retained file stops at the V1 budget while stdout keeps draining.
+cat > "$TEMP_ROOT/filter.py" <<'PY'
+import json, os, sys
+
+limit = int(os.environ["AICAD_EVENTS_LIMIT"])
+line_limit = int(os.environ["AICAD_EVENT_LINE_LIMIT"])
+secrets = [value for value in (os.environ.get("OPENCODE_API_KEY", ""), os.environ.get("GITHUB_TOKEN", "")) if value]
+retained = 0
+total = 0
+truncated = False
+output = open(os.environ["AICAD_EVENTS_FILE"], "wb")
+for raw in sys.stdin.buffer:
+    total += len(raw)
+    text = raw.decode("utf-8", "replace")
+    for secret in secrets:
+        text = text.replace(secret, "[authentication protected]")
+    try:
+        json.loads(text)
+    except json.JSONDecodeError:
+        text = json.dumps({"type": "unparsed_output", "text": text.rstrip("\r\n")}) + "\n"
+    encoded = text.encode("utf-8")
+    if len(encoded) > line_limit:
+        encoded = (json.dumps({"type": "truncated_event", "original_bytes": len(encoded)}) + "\n").encode()
+    sys.stdout.buffer.write(encoded)
+    sys.stdout.buffer.flush()
+    if retained + len(encoded) <= limit:
+        output.write(encoded)
+        retained += len(encoded)
+    elif not truncated:
+        marker = (json.dumps({"type": "audit_truncated", "retained_bytes": retained}) + "\n").encode()
+        if retained + len(marker) <= limit:
+            output.write(marker)
+            retained += len(marker)
+        truncated = True
+output.close()
+json.dump({"original_bytes": total, "retained_bytes": retained, "truncated": truncated}, open(os.environ["AICAD_EVENTS_STATS"], "w"))
+PY
+
+cat > "$TEMP_ROOT/stderr-filter.py" <<'PY'
+import os, sys
+secrets = [value for value in (os.environ.get("OPENCODE_API_KEY", ""), os.environ.get("GITHUB_TOKEN", "")) if value]
+for text in sys.stdin:
+    for secret in secrets:
+        text = text.replace(secret, "[authentication protected]")
+    sys.stderr.write(text)
+    sys.stderr.flush()
+PY
+
+set +e
+export AICAD_EVENTS_LIMIT="$MAX_EVENTS_BYTES"
+export AICAD_EVENT_LINE_LIMIT="$MAX_EVENT_LINE_BYTES"
+export AICAD_EVENTS_FILE="$TEMP_RUN/events.jsonl"
+export AICAD_EVENTS_STATS="$TEMP_ROOT/events-stats.json"
+opencode run --format json --model "$MODEL" --agent "$AGENT" -- "$prompt" \
+  2> >(python3 "$TEMP_ROOT/stderr-filter.py") \
+  | python3 "$TEMP_ROOT/filter.py"
+pipeline_status=("${PIPESTATUS[@]}")
+opencode_exit=${pipeline_status[0]}
+filter_exit=${pipeline_status[1]}
+set -e
+
+status="completed"
+failure_stage=""
+validation_exit=0
+if test "$filter_exit" -ne 0; then
+  status="failed"
+  failure_stage="event_capture"
+elif test "$opencode_exit" -ne 0; then
+  status="failed"
+  failure_stage="opencode"
+elif test "$(git rev-parse HEAD)" != "$START_SHA"; then
+  status="failed"
+  failure_stage="unexpected_commit"
+else
+  set +e
+  "$VALIDATOR" validate --project-root .
+  validation_exit=$?
+  set -e
+  if test "$validation_exit" -ne 0; then
+    status="failed"
+    failure_stage="validation"
+  fi
+fi
+
+git status --porcelain=v1 -z | python3 -c '
+import json, sys
+raw = sys.stdin.buffer.read().split(b"\0")
+paths = []
+for item in raw:
+    if not item: continue
+    text = item.decode("utf-8", "replace")
+    path = text[3:] if len(text) > 3 else text
+    if path and not path.startswith((".audit-venv/", ".aicad/audit/")):
+        paths.append(path)
+json.dump(sorted(set(paths))[:2000], sys.stdout)
+' > "$TEMP_ROOT/changed-paths.json"
+
+if test "$status" = "completed" && test "$(jq length "$TEMP_ROOT/changed-paths.json")" -eq 0; then
+  status="no_changes"
+  failure_stage="no_changes"
+fi
+
+completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+events_sha="$(shasum -a 256 "$TEMP_RUN/events.jsonl" | awk '{print $1}')"
+opencode_version="$(opencode --version)"
+jq -n \
+  --slurpfile trigger "$TEMP_ROOT/safe-trigger.json" \
+  --slurpfile paths "$TEMP_ROOT/changed-paths.json" \
+  --slurpfile stats "$TEMP_ROOT/events-stats.json" \
+  --arg run_id "$RUN_ID" \
+  --arg model "$MODEL" \
+  --arg agent "$AGENT" \
+  --arg opencode_version "$opencode_version" \
+  --arg started_at "$started_at" \
+  --arg completed_at "$completed_at" \
+  --arg status "$status" \
+  --arg failure_stage "$failure_stage" \
+  --arg start_sha "$START_SHA" \
+  --arg events_sha "$events_sha" \
+  --argjson opencode_exit "$opencode_exit" \
+  --argjson validation_exit "$validation_exit" \
+  '{
+    schema_version: 1,
+    run_id: $run_id,
+    source: "github-actions",
+    github: $trigger[0],
+    opencode: {version: $opencode_version, model: $model, agent: $agent, exit_code: $opencode_exit},
+    started_at: $started_at,
+    completed_at: $completed_at,
+    status: $status,
+    failure_stage: (if $failure_stage == "" then null else $failure_stage end),
+    starting_revision: $start_sha,
+    candidate_changed_paths: $paths[0],
+    validation: [{command: "python-cad validate --project-root .", exit_code: $validation_exit}],
+    events: ($stats[0] + {sha256: $events_sha})
+  }' > "$TEMP_RUN/run.json"
+
+test "$(wc -c < "$TEMP_RUN/run.json")" -le 262144 || { echo "Audit manifest exceeds V1 limit" >&2; exit 66; }
+
+if test "$status" != "completed"; then
+  # This checkout is disposable and was resolved above. Preserve only the
+  # finalized audit evidence on failure/no-change.
+  git reset --hard "$START_SHA"
+  git clean -fd -e .audit-venv/
+fi
+
+mkdir -p "$(dirname "$RUN_DIR")"
+mv "$TEMP_RUN" "$RUN_DIR"
+git add -A -- . ":(exclude).audit-venv"
+
+if test "$status" = "completed"; then
+  commit_message="chore(opencode): record AI execution $RUN_ID"
+else
+  commit_message="chore(opencode): record $status AI execution $RUN_ID"
+fi
+git commit -m "$commit_message"
+git push origin HEAD
+
+if test "$status" != "completed"; then
+  exit 1
+fi

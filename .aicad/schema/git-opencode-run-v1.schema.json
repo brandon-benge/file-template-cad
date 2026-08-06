@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-cad.local/schema/git-opencode-run-v1.schema.json",
+  "title": "AI CAD Git-triggered OpenCode run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "run_id", "source", "github", "opencode",
+    "started_at", "completed_at", "status", "starting_revision",
+    "candidate_changed_paths", "validation", "events"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^[0-9]+-[0-9]+$", "maxLength": 64},
+    "source": {"const": "github-actions"},
+    "github": {"type": "object"},
+    "opencode": {
+      "type": "object",
+      "required": ["version", "model", "agent", "exit_code"],
+      "properties": {
+        "version": {"type": "string", "maxLength": 64},
+        "model": {"type": "string", "maxLength": 256},
+        "agent": {"type": "string", "maxLength": 128},
+        "exit_code": {"type": "integer"}
+      }
+    },
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["completed", "failed", "no_changes"]},
+    "failure_stage": {"type": ["string", "null"], "maxLength": 64},
+    "starting_revision": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "candidate_changed_paths": {
+      "type": "array", "maxItems": 2000,
+      "items": {"type": "string", "maxLength": 1024}
+    },
+    "validation": {"type": "array", "maxItems": 100},
+    "events": {
+      "type": "object",
+      "required": ["original_bytes", "retained_bytes", "truncated", "sha256"],
+      "properties": {
+        "original_bytes": {"type": "integer", "minimum": 0},
+        "retained_bytes": {"type": "integer", "minimum": 0, "maximum": 8388608},
+        "truncated": {"type": "boolean"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

@@ -6,181 +6,113 @@ on:
   issue_comment:
     types: [created]
 
+concurrency:
+  group: git-opencode-${{ github.repository }}
+  queue: max
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
 jobs:
-  opened-issue:
-    name: Handle opened issue
-
+  opencode:
+    name: Handle Git-triggered OpenCode request
     if: >
-      github.event_name == 'issues' &&
-      github.actor == github.repository_owner
-
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-
-    steps:
-      - name: Wait for prior workflow runs
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const branch = context.payload.repository.default_branch;
-            const currentRunId = context.runId;
-            const MAX_WAIT_MS = 7_200_000;
-            const POLL_INTERVAL_MS = 30_000;
-            const startTime = Date.now();
-
-            core.info(`Waiting for prior workflow runs on "${branch}"...`);
-
-            while (Date.now() - startTime < MAX_WAIT_MS) {
-              const { data: inProgress } = await github.rest.actions.listWorkflowRunsForRepo({
-                owner, repo, branch,
-                status: 'in_progress',
-                per_page: 100,
-              });
-              const { data: queued } = await github.rest.actions.listWorkflowRunsForRepo({
-                owner, repo, branch,
-                status: 'queued',
-                per_page: 100,
-              });
-
-              const otherRuns = [...inProgress.workflow_runs, ...queued.workflow_runs]
-                .filter(run => run.id !== currentRunId && run.status !== 'completed');
-
-              if (otherRuns.length === 0) {
-                core.info('No prior workflow runs in progress. Proceeding.');
-                return;
-              }
-
-              const names = otherRuns.map(r => `${r.name}#${r.run_number}`).join(', ');
-              core.info(`Waiting for ${otherRuns.length} run(s): ${names}`);
-              await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
-            }
-
-            core.warning(`Timed out after 7200s waiting for prior runs. Proceeding.`);
-
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Configure Git identity
-        shell: bash
-        run: |
-          git config --global user.name "opencode[bot]"
-          git config --global user.email "opencode[bot]@users.noreply.github.com"
-
-      - name: Run OpenCode
-        uses: anomalyco/opencode/github@latest
-        env:
-          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          model: opencode-go/glm-5.2
-          use_github_token: true
-          prompt: |
-            Work on GitHub issue #${{ github.event.issue.number }}.
-
-            Issue title:
-            ${{ github.event.issue.title }}
-
-            Issue description:
-            ${{ github.event.issue.body }}
-
-            Follow the repository instructions and governance requirements.
-
-            Analyze the issue, make only the changes necessary to resolve it,
-            run the relevant validation and tests, and commit the completed
-            changes.
-
-            Update the issue with a clear summary of:
-            - what changed
-            - what validation was run
-            - whether the issue is fully resolved
-            - any remaining concerns or required follow-up
-
-  issue-comment:
-    name: Handle OpenCode comment
-
-    if: >
-      github.event_name == 'issue_comment' &&
       github.actor == github.repository_owner &&
       (
-        startsWith(github.event.comment.body, '/oc') ||
-        startsWith(github.event.comment.body, '/opencode')
+        github.event_name == 'issues' ||
+        (
+          github.event_name == 'issue_comment' &&
+          (
+            startsWith(github.event.comment.body, '/oc') ||
+            startsWith(github.event.comment.body, '/opencode')
+          )
+        )
       )
-
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
 
     steps:
-      - name: Wait for prior workflow runs
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const branch = context.payload.repository.default_branch;
-            const currentRunId = context.runId;
-            const MAX_WAIT_MS = 7_200_000;
-            const POLL_INTERVAL_MS = 30_000;
-            const startTime = Date.now();
-
-            core.info(`Waiting for prior workflow runs on "${branch}"...`);
-
-            while (Date.now() - startTime < MAX_WAIT_MS) {
-              const { data: inProgress } = await github.rest.actions.listWorkflowRunsForRepo({
-                owner, repo, branch,
-                status: 'in_progress',
-                per_page: 100,
-              });
-              const { data: queued } = await github.rest.actions.listWorkflowRunsForRepo({
-                owner, repo, branch,
-                status: 'queued',
-                per_page: 100,
-              });
-
-              const otherRuns = [...inProgress.workflow_runs, ...queued.workflow_runs]
-                .filter(run => run.id !== currentRunId && run.status !== 'completed');
-
-              if (otherRuns.length === 0) {
-                core.info('No prior workflow runs in progress. Proceeding.');
-                return;
-              }
-
-              const names = otherRuns.map(r => `${r.name}#${r.run_number}`).join(', ');
-              core.info(`Waiting for ${otherRuns.length} run(s): ${names}`);
-              await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
-            }
-
-            core.warning(`Timed out after 7200s waiting for prior runs. Proceeding.`);
-
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: true
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pinned OpenCode and validation environment
+        shell: bash
+        run: |
+          npm install --global opencode-ai@1.15.2
+          test "$(opencode --version)" = "1.15.2"
+          python -m venv .audit-venv
+          .audit-venv/bin/pip install --require-hashes -r requirements/locks/dev-ubuntu-x86_64-py313.lock
+
+      - name: Normalize trigger
+        shell: bash
+        run: |
+          jq -n \
+            --slurpfile event "$GITHUB_EVENT_PATH" \
+            --arg event_name "$GITHUB_EVENT_NAME" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg repository_id "${{ github.event.repository.id }}" \
+            --arg workflow "$GITHUB_WORKFLOW" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg actor "$GITHUB_ACTOR" \
+            --arg ref "$GITHUB_REF" \
+            --arg sha "$GITHUB_SHA" \
+            '{
+              event_name: $event_name,
+              repository: $repository,
+              repository_id: $repository_id,
+              workflow: $workflow,
+              run_id: $run_id,
+              run_attempt: $run_attempt,
+              actor: $actor,
+              ref: $ref,
+              trigger_sha: $sha,
+              issue: {
+                number: $event[0].issue.number,
+                title: $event[0].issue.title,
+                body: ($event[0].issue.body // "")
+              },
+              comment: (if $event_name == "issue_comment" then {
+                id: $event[0].comment.id,
+                body: ($event[0].comment.body // "")
+              } else null end)
+            }' > "$RUNNER_TEMP/aicad-trigger.json"
+
       - name: Configure Git identity
         shell: bash
         run: |
-          git config --global user.name "opencode[bot]"
-          git config --global user.email "opencode[bot]@users.noreply.github.com"
+          git config user.name "opencode[bot]"
+          git config user.email "opencode[bot]@users.noreply.github.com"
 
-      - name: Run OpenCode
-        uses: anomalyco/opencode/github@latest
+      - name: Run OpenCode with repository audit
+        shell: bash
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          GITHUB_TOKEN: ${{ github.token }}
+          OPENCODE_MODEL: opencode-go/glm-5.2
+          OPENCODE_AGENT: file-design-maintainer
+          AICAD_VALIDATION_EXECUTABLE: .audit-venv/bin/python-cad
+        run: tools/run-git-opencode-audit "$RUNNER_TEMP/aicad-trigger.json"
+
+      - name: Upload audit evidence when commit or push fails
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          model: opencode-go/glm-5.2
-          use_github_token: true
+          name: opencode-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .aicad/audit/v1/${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: ignore
+          retention-days: 14

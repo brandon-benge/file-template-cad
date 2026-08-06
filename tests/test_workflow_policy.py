@@ -22,6 +22,42 @@ def test_old_build_design_yml_removed():
     assert not (PROJECT_ROOT / ".github" / "workflows" / "build-design.yml").is_file()
 
 
+def test_opencode_workflow_uses_one_non_cancelling_repository_queue():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
+    assert text.count("git-opencode-${{ github.repository }}") == 1
+    assert "queue: max" in text
+    assert "cancel-in-progress: false" in text
+    assert "Wait for prior workflow runs" not in text
+    assert text.count("Handle Git-triggered OpenCode request") == 1
+    assert "startsWith(github.event.comment.body, '/oc')" in text
+    assert "startsWith(github.event.comment.body, '/opencode')" in text
+
+
+def test_opencode_workflow_owns_a_bounded_audit_transaction():
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
+    runner = (PROJECT_ROOT / "tools" / "run-git-opencode-audit").read_text()
+    schema = PROJECT_ROOT / ".aicad" / "schema" / "git-opencode-run-v1.schema.json"
+    assert "opencode-ai@1.15.2" in workflow
+    assert "anomalyco/opencode/github@latest" not in workflow
+    assert "tools/run-git-opencode-audit" in workflow
+    assert "--format json" in runner
+    assert "PIPESTATUS" in runner
+    assert "git commit" in runner
+    assert "git push origin HEAD" in runner
+    assert "git reset --hard" in runner
+    assert "[authentication protected]" in runner
+    assert "MAX_EVENTS_BYTES=8388608" in runner
+    assert schema.is_file()
+
+
+def test_opencode_workflow_permissions_are_bounded():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
+    assert "contents: write" in text
+    assert "issues: write" in text
+    assert "pull-requests: write" not in text
+    assert "write-all" not in text
+
+
 def test_ci_yml_required_jobs():
     text = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text()
     required = [
