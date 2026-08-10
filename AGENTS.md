@@ -47,7 +47,6 @@ metadata together.
 | `file-design-maintainer` | Implement template-design changes | `config.py`, `model.py`, `drawing_annotations.py` |
 | `file-artifact-reviewer` | Review generated outputs and report design-quality findings | Nothing |
 | `cad-compatibility-verifier` | Verify the installed PyPI package, environment, commands, and compatibility | Nothing |
-| `python-cad-tools-upgrader` | Upgrade the published dependency and apply version-aware testing | `pyproject.toml`, dependency locks |
 
 ## Collaboration
 
@@ -238,10 +237,10 @@ not run E2E tests. A minor or major change, or a user request for a full
 upgrade, requires E2E testing. E2E testing is also available on demand through
 the manually dispatched `File Template CAD End-to-End` GitHub Actions workflow.
 
-The `python-cad-tools-upgrader` owns dependency upgrades. It must use its skill,
-install only the published package, regenerate applicable locks, and run the
-documented upgrade smoke sequence. It must not run E2E tests for patch-only
-upgrades unless the user explicitly requests them.
+Dependency-version selection is a repository-settings action performed through
+the AI CAD app (`AICAD_PYTHON_CAD_TOOLS_VERSION` variable and the on-demand
+rebuild workflow); it is not a prompt-driven agent task. No agent edits
+`pyproject.toml` or dependency locks to perform a version upgrade.
 
 Do not invent unsupported commands or silently bypass failed checks. Report
 environment-specific skipped checks and the reason.

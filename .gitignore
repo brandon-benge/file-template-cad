@@ -18,6 +18,7 @@ tools/
 !tools/
 tools/*
 !tools/run-git-opencode-audit
+!tools/install-selected-python-cad-tools
 viewer/
 backup/
 .back_agents/

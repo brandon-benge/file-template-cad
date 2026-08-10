@@ -102,33 +102,6 @@
         "websearch": "allow",
         "question": "allow"
       }
-    },
-    "python-cad-tools-upgrader": {
-      "description": "Upgrade the published python-cad-tools dependency and apply semantic-version-aware testing.",
-      "mode": "primary",
-      "hidden": true,
-      "temperature": 0,
-      "prompt": "You are the Python CAD Tools Upgrader. Use the python-cad-tools-upgrader skill for dependency changes. Edit only pyproject.toml and dependency lockfiles. For patch-only upgrades run basic checks and never E2E unless explicitly requested. For minor, major, or explicitly full upgrades run complete E2E verification. Never use local or editable package source or invoke Git directly. Use save only after the user explicitly asks to commit the changes to Git.",
-      "permission": {
-        "read": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "list": "allow",
-        "skill": { "*": "deny", "python-cad-tools-upgrader": "allow", "start-ui": "allow", "stop-ui": "allow", "upgrade-ui": "allow", "save": "allow" },
-        "task": "deny",
-        "specrepo-autocommit": "allow",
-        "start-ui": "allow",
-        "stop-ui": "allow",
-        "upgrade-ui": "allow",
-        "edit": { "*": "deny", "pyproject.toml": "allow", "requirements/*.lock": "allow", "requirements/locks/*.lock": "allow" },
-        "bash": "allow",
-        "lsp": "deny",
-        "external_directory": "ask",
-        "todowrite": "allow",
-        "webfetch": "ask",
-        "websearch": "ask",
-        "question": "allow"
-      }
     }
   }
 }

@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""Install python-cad-tools at the repository-selected version.
+
+Reads the selected version from an environment variable (default
+``AICAD_PYTHON_CAD_TOOLS_VERSION``). When the variable is unset or empty, the
+committed requirements lock is installed verbatim. When set, the version is
+validated against the project's declared ``python-cad-tools`` specifier and
+PyPI, only the ``python-cad-tools==<old>`` pin block is replaced with the
+selected version plus every SHA-256 digest published for it, and the result is
+installed with ``--require-hashes``.
+
+Committed lockfiles and ``pyproject.toml`` are never modified. The reconciled
+requirements are written to a temporary file outside the repository.
+
+Usage (argv-only):
+
+    install-selected-python-cad-tools --lock <lockfile> \
+        [--version <env-var>] [--pyproject <path>] [--pypi-json-base <url>] \
+        [--dry-run] [--output <path>]
+
+``--dry-run`` prints the reconciled requirements to stdout without installing.
+``--output <path>`` writes the reconciled requirements to ``<path>`` instead of
+installing. Both are intended for offline tests.
+"""
+
+import argparse
+import errno
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import tomllib
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+DEFAULT_VERSION_VAR = "AICAD_PYTHON_CAD_TOOLS_VERSION"
+DEFAULT_PYPI_JSON_BASE = "https://pypi.org"
+PIN_LINE_RE = re.compile(
+    r"^python-cad-tools==[^\s]+(?:\s*\\)?\n"
+    r"(?:^[ \t]+--hash=sha256:[a-f0-9]+(?:\s*\\)?\n)*",
+    re.MULTILINE,
+)
+
+# Minimal PEP 440 subset: a public release is ``N(.N)*`` optionally followed by
+# a pre/post/dev suffix. Stable releases must be plain numeric release segments.
+_STABLE_RE = re.compile(r"^\d+(?:\.\d+)*$")
+_UNSTABLE_SUFFIX_RE = re.compile(
+    r"(?i)(?:a|b|rc|pre|alpha|beta|post|rev|dev)(?:[-_.]?\d+)?$"
+)
+
+
+def fail(message: str) -> int:
+    print(f"install-selected-python-cad-tools: error: {message}", file=sys.stderr)
+    return 1
+
+
+def _release_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def _compare(left: tuple[int, ...], right: tuple[int, ...]) -> int:
+    width = max(len(left), len(right))
+    left = left + (0,) * (width - len(left))
+    right = right + (0,) * (width - len(right))
+    if left < right:
+        return -1
+    if left > right:
+        return 1
+    return 0
+
+
+def _specifier_matches(specifier: str, version: tuple[int, ...]) -> bool:
+    """Return whether ``version`` satisfies a comma-separated PEP 440 specifier.
+
+    Supports the operators used by the downstream projects' declared
+    ``python-cad-tools`` constraints (``>=``, ``>``, ``<=``, ``<``, ``==``,
+    ``!=``, ``~=``) over plain numeric releases.
+    """
+    for clause in specifier.split(","):
+        clause = clause.strip()
+        if not clause:
+            continue
+        match = re.match(r"^(==|!=|>=|<=|>|<|~=)\s*(\d+(?:\.\d+)*)$", clause)
+        if not match:
+            raise SystemExit(fail(f"unsupported version specifier clause: {clause!r}"))
+        operator, bound_text = match.group(1), match.group(2)
+        bound = _release_tuple(bound_text)
+        comparison = _compare(version, bound)
+        if operator == "==":
+            satisfied = comparison == 0
+        elif operator == "!=":
+            satisfied = comparison != 0
+        elif operator == ">=":
+            satisfied = comparison >= 0
+        elif operator == ">":
+            satisfied = comparison > 0
+        elif operator == "<=":
+            satisfied = comparison <= 0
+        elif operator == "<":
+            satisfied = comparison < 0
+        elif operator == "~=":
+            # Compatible release: >= bound and < bound with the penultimate
+            # segment bumped (PEP 440 compatible-release semantics).
+            upper = list(bound)
+            if len(upper) >= 2:
+                upper[-2] += 1
+                upper = upper[:-1]
+            else:
+                upper[0] += 1
+            satisfied = comparison >= 0 and _compare(version, tuple(upper)) < 0
+        else:  # pragma: no cover - regex guarantees an operator
+            raise SystemExit(fail(f"unsupported version specifier operator: {operator!r}"))
+        if not satisfied:
+            return False
+    return True
+
+
+def validate_version(version: str) -> tuple[int, ...]:
+    """Fail fast when the version is invalid or not a stable release."""
+    if _UNSTABLE_SUFFIX_RE.search(version):
+        raise SystemExit(fail(f"python-cad-tools version must be a stable release: {version!r}"))
+    if not _STABLE_RE.fullmatch(version):
+        raise SystemExit(fail(f"invalid python-cad-tools version: {version!r}"))
+    return _release_tuple(version)
+
+
+def read_python_cad_tools_specifier(pyproject_path: Path) -> str:
+    if not pyproject_path.is_file():
+        raise SystemExit(fail(f"pyproject.toml not found: {pyproject_path}"))
+    with open(pyproject_path, "rb") as fh:
+        data = tomllib.load(fh)
+    dependencies = data.get("project", {}).get("dependencies", [])
+    for dependency in dependencies:
+        match = re.match(r"^\s*python-cad-tools\s*([<>=!~].*)$", dependency)
+        if match:
+            return match.group(1).strip()
+    raise SystemExit(fail("python-cad-tools dependency not found in pyproject.toml"))
+
+
+def fetch_pypi_sha256_digests(version: str, base_url: str) -> list[str]:
+    """Return every SHA-256 digest PyPI publishes for ``version``."""
+    url = f"{base_url}/pypi/python-cad-tools/{version}/json"
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            data = json.load(response)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise SystemExit(fail(f"python-cad-tools {version} was not found on PyPI")) from exc
+        raise SystemExit(fail(f"PyPI request failed with HTTP {exc.code}: {url}")) from exc
+    except urllib.error.URLError as exc:
+        reason = exc.reason
+        if isinstance(reason, OSError) and reason.errno in (errno.ENOENT, errno.ENOTDIR):
+            raise SystemExit(fail(f"python-cad-tools {version} was not found on PyPI")) from exc
+        raise SystemExit(fail(f"PyPI request failed: {exc}")) from exc
+    except OSError as exc:
+        raise SystemExit(fail(f"PyPI request failed: {exc}")) from exc
+    digests = [
+        entry["digests"]["sha256"]
+        for entry in data.get("urls", [])
+        if entry.get("digests", {}).get("sha256")
+    ]
+    return sorted(set(digests))
+
+
+def reconcile_lock(lock_text: str, version: str, digests: list[str]) -> str:
+    """Replace only the python-cad-tools pin block with the selected version."""
+    block = f"python-cad-tools=={version} \\\n"
+    for index, digest in enumerate(digests):
+        continuation = " \\\n" if index < len(digests) - 1 else "\n"
+        block += f"    --hash=sha256:{digest}{continuation}"
+    new_text, count = PIN_LINE_RE.subn(block, lock_text, count=1)
+    if count == 0:
+        raise SystemExit(fail("python-cad-tools pin not found in lock file"))
+    return new_text
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Install python-cad-tools at the selected repository version."
+    )
+    parser.add_argument("--lock", required=True, help="path to the committed requirements lock")
+    parser.add_argument("--version", default=DEFAULT_VERSION_VAR, help="environment variable name")
+    parser.add_argument("--pyproject", default="pyproject.toml", help="path to pyproject.toml")
+    parser.add_argument("--pypi-json-base", default=DEFAULT_PYPI_JSON_BASE, help="PyPI JSON base URL")
+    parser.add_argument("--dry-run", action="store_true", help="print reconciled requirements only")
+    parser.add_argument("--output", help="write reconciled requirements to this path")
+    return parser.parse_args(argv)
+
+
+def pip_install(requirements_path: Path) -> None:
+    command = [sys.executable, "-m", "pip", "install", "--require-hashes", "-r", str(requirements_path)]
+    print("Running:", " ".join(command))
+    subprocess.run(command, check=True)
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    lock_path = Path(args.lock)
+    if not lock_path.is_file():
+        return fail(f"lock file not found: {lock_path}")
+    lock_text = lock_path.read_text(encoding="utf-8")
+
+    selected = os.environ.get(args.version, "").strip()
+    if not selected:
+        # Unset variable: install the committed lock verbatim.
+        if args.dry_run:
+            sys.stdout.write(lock_text)
+            return 0
+        if args.output:
+            Path(args.output).write_text(lock_text, encoding="utf-8")
+            return 0
+        pip_install(lock_path)
+        return 0
+
+    version_tuple = validate_version(selected)
+    specifier = read_python_cad_tools_specifier(Path(args.pyproject))
+    if specifier and not _specifier_matches(specifier, version_tuple):
+        raise SystemExit(
+            fail(f"python-cad-tools {selected} does not satisfy declared constraint {specifier}")
+        )
+    digests = fetch_pypi_sha256_digests(selected, args.pypi_json_base)
+    if not digests:
+        raise SystemExit(fail(f"no SHA-256 digests published for python-cad-tools {selected}"))
+    reconciled = reconcile_lock(lock_text, selected, digests)
+    if args.dry_run:
+        sys.stdout.write(reconciled)
+        return 0
+    if args.output:
+        Path(args.output).write_text(reconciled, encoding="utf-8")
+        return 0
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".lock", delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(reconciled)
+        tmp_path = Path(tmp.name)
+    try:
+        pip_install(tmp_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
+

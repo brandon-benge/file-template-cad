@@ -153,7 +153,6 @@ and verification expectations for the project roles:
 - `file-design-maintainer`
 - `file-artifact-reviewer`
 - `cad-compatibility-verifier`
-- `python-cad-tools-upgrader`
 
 Every agent can use the `save` skill, but only after the user explicitly asks
 to commit the changes to Git. The repository also provides `start-ui`,

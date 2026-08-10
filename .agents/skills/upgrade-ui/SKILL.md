@@ -20,5 +20,4 @@ Report the installed version and viewer URL. This operational tool upgrades the
 active environment; it does not edit `pyproject.toml`, regenerate dependency
 locks, select dependency versions, commit changes, or imply E2E verification.
 Keep the final command in a managed long-running terminal session so it can be
-stopped with Ctrl-C. Use `python-cad-tools-upgrader` for a repository
-dependency-version change.
+stopped with Ctrl-C.

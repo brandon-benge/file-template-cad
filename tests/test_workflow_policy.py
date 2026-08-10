@@ -126,6 +126,9 @@ def test_sister_repository_contract_parity():
         "tools/run-git-opencode-audit",
         ".aicad/schema/git-opencode-run-v1.schema.json",
         "tests/test_git_opencode_audit.py",
+        ".github/workflows/rebuild.yml",
+        "tools/install-selected-python-cad-tools",
+        "tests/test_version_install.py",
     ]
     for relative in shared:
         assert (PROJECT_ROOT / relative).read_bytes() == (sibling / relative).read_bytes(), (
@@ -234,9 +237,122 @@ def test_agents_md_has_separation_of_duties():
     assert "file-design-maintainer" in text
     assert "file-artifact-reviewer" in text
     assert "cad-compatibility-verifier" in text
-    assert "python-cad-tools-upgrader" in text
+    assert "python-cad-tools-upgrader" not in text
     assert "explicitly asks to commit" in text
     assert "Repository boundary" in text
+
+
+def test_rebuild_yml_exists():
+    assert (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").is_file()
+
+
+def test_rebuild_yml_is_manual_dispatch_without_inputs():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
+    assert "workflow_dispatch:" in text
+    assert "inputs:" not in text
+    assert "push:" not in text
+    assert "pull_request:" not in text
+    assert "workflow_run:" not in text
+
+
+def test_rebuild_yml_reads_selected_version_variable():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
+    assert "AICAD_PYTHON_CAD_TOOLS_VERSION" in text
+    assert "vars.AICAD_PYTHON_CAD_TOOLS_VERSION" in text
+    assert "install-selected-python-cad-tools" in text
+
+
+def test_rebuild_yml_has_no_hardcoded_version_or_local_wheel():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
+    assert "0.1.9" not in text
+    assert "python-cad-tools==" not in text
+    assert "python-cad-tools/dist" not in text
+    assert "test-with-cad-override" not in text
+
+
+def test_rebuild_yml_never_commits_or_mutates_locks():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
+    assert "git commit" not in text
+    assert "pip-compile" not in text
+    assert "install-selected-python-cad-tools" in text
+    # The only requirements path allowed is the committed dev lock passed to
+    # the runner, which installs from a temporary reconciled file.
+    assert "requirements/locks/dev-ubuntu-x86_64-py313.lock" in text
+    # No shell redirection or output-file writes into the project tree.
+    assert "> requirements" not in text
+    assert "--output-file" not in text
+
+
+def test_rebuild_yml_permissions_least_privilege():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
+    assert "write-all" not in text
+    assert "contents: write" in text
+    assert "pages: write" in text
+    assert "id-token: write" in text
+
+
+def test_rebuild_yml_derives_base_path_from_repository_name():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
+    assert "github.event.repository.name" in text
+    assert "--base-path" in text
+    assert "/file-template-cad/" not in text
+    assert "/benge-property-cad/" not in text
+
+
+def test_rebuild_yml_tags_deployed_version():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
+    assert "aicad-deploy-" in text
+    assert "git tag" in text
+    assert "git push origin" in text
+    assert "refs/tags/" in text
+    assert "git rev-parse -q --verify" in text
+
+
+def test_rebuild_yml_reuses_pages_pipeline():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
+    for command in [
+        "python-cad validate --project-root .",
+        "python-cad clean --project-root .",
+        "python-cad build --project-root .",
+        "python-cad verify --project-root .",
+        "python-cad prepare-site --project-root .",
+    ]:
+        assert command in text
+    for action in [
+        "actions/configure-pages@v5",
+        "actions/upload-pages-artifact@v3",
+        "actions/deploy-pages@v4",
+    ]:
+        assert action in text
+
+
+def test_python_cad_tools_upgrader_agent_retired():
+    """The agent-owned python-cad-tools upgrade path is fully removed."""
+    assert not (PROJECT_ROOT / ".agents" / "agents" / "python-cad-tools-upgrader.md").exists()
+    assert not (PROJECT_ROOT / ".agents" / "skills" / "python-cad-tools-upgrader").exists()
+    config = (PROJECT_ROOT / "opencode.jsonc").read_text()
+    assert "python-cad-tools-upgrader" not in config
+    assert '"pyproject.toml": "allow"' not in config
+    assert "requirements/*.lock" not in config
+    readme = (PROJECT_ROOT / "README.md").read_text()
+    assert "python-cad-tools-upgrader" not in readme
+    agents_md = (PROJECT_ROOT / "AGENTS.md").read_text()
+    assert "owns dependency upgrades" not in agents_md
+    upgrade_ui = (PROJECT_ROOT / ".agents" / "skills" / "upgrade-ui" / "SKILL.md").read_text()
+    assert "python-cad-tools-upgrader" not in upgrade_ui
+    normalized = " ".join(upgrade_ui.split())
+    assert "When OpenCode tools are not available" in normalized
+
+
+def test_remaining_agents_and_tools_unchanged():
+    config = (PROJECT_ROOT / "opencode.jsonc").read_text()
+    for agent in ["file-design-maintainer", "file-artifact-reviewer", "cad-compatibility-verifier"]:
+        assert f'"{agent}":' in config
+        assert (PROJECT_ROOT / ".agents" / "agents" / f"{agent}.md").is_file()
+    assert (PROJECT_ROOT / ".agents" / "skills" / "cad-compatibility-verifier" / "SKILL.md").is_file()
+    assert (PROJECT_ROOT / ".agents" / "skills" / "file-design-maintainer" / "SKILL.md").is_file()
+    assert (PROJECT_ROOT / ".agents" / "skills" / "file-artifact-reviewer" / "SKILL.md").is_file()
+    assert (PROJECT_ROOT / "tools" / "run-git-opencode-audit").is_file()
 
 
 def test_ui_tools_and_skills_exist():

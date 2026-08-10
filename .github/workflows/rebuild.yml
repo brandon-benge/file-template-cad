@@ -1,0 +1,67 @@
+name: Rebuild File Template CAD viewer at selected python-cad-tools version
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rebuild-pages
+  cancel-in-progress: true
+
+env:
+  PIP_NO_CACHE_DIR: 1
+
+jobs:
+  rebuild-and-deploy:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install selected python-cad-tools version
+        env:
+          AICAD_PYTHON_CAD_TOOLS_VERSION: ${{ vars.AICAD_PYTHON_CAD_TOOLS_VERSION }}
+        run: |
+          tools/install-selected-python-cad-tools \
+            --lock requirements/locks/dev-ubuntu-x86_64-py313.lock
+          pip check
+      - name: Validate
+        run: python-cad validate --project-root .
+      - name: Clean
+        run: python-cad clean --project-root .
+      - name: Build
+        run: python-cad build --project-root .
+      - name: Verify
+        run: python-cad verify --project-root .
+      - name: Prepare site
+        run: python-cad prepare-site --project-root . --destination site --base-path /${{ github.event.repository.name }}/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Tag deployed version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(python -c 'import importlib.metadata; print(importlib.metadata.version("python-cad-tools"))')"
+          sha="$(git rev-parse --short HEAD)"
+          tag="aicad-deploy-${version}-${sha}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag already exists: ${tag}"
+          else
+            git tag "${tag}"
+            git push origin "${tag}"
+            echo "Created tag: ${tag}"
+          fi
