@@ -102,8 +102,10 @@ jobs:
       - name: Run OpenCode with repository audit
         shell: bash
         env:
+          AICAD_OPENCODE_MODEL: ${{ vars.AICAD_OPENCODE_MODEL }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          OPENCODE_MODEL: glm-5.2
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENCODE_AGENT: file-design-maintainer
           AICAD_VALIDATION_EXECUTABLE: .audit-venv/bin/python-cad
           AICAD_FAILURE_ARTIFACT_DIR: ${{ runner.temp }}/aicad-failure-artifacts

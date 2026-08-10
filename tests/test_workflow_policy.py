@@ -7,6 +7,8 @@ or building the project.
 import re
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -64,6 +66,71 @@ def test_opencode_workflow_permissions_are_bounded():
     assert "issues: write" in text
     assert "pull-requests: write" not in text
     assert "write-all" not in text
+
+
+def test_opencode_workflow_has_no_hardcoded_model_id():
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
+    assert "glm-5.2" not in workflow
+    # The only OPENCODE_MODEL token allowed is the AICAD_OPENCODE_MODEL
+    # repository variable; the old hardcoded OPENCODE_MODEL env key must
+    # never reappear.
+    assert re.search(r"(?<!AICAD_)OPENCODE_MODEL:", workflow) is None
+    assert re.search(r"(?<!AICAD_)OPENCODE_MODEL", workflow) is None
+
+
+def test_opencode_workflow_sources_model_from_repository_variable():
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
+    assert "AICAD_OPENCODE_MODEL: ${{ vars.AICAD_OPENCODE_MODEL }}" in workflow
+
+
+def test_opencode_workflow_passes_candidate_provider_secrets():
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
+    assert "OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}" in workflow
+    assert "OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}" in workflow
+    assert "ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}" in workflow
+
+
+def test_opencode_runner_owns_model_selection_validation():
+    runner = (PROJECT_ROOT / "tools" / "run-git-opencode-audit").read_text()
+    assert "AICAD_OPENCODE_MODEL" in runner
+    assert "validate_model_reference" in runner
+    assert "provider-model-diagnostic.json" in runner
+    assert "credential_presence" in runner
+    assert "OPENCODE_API_KEY_PRESENT" in runner
+    assert "OPENAI_API_KEY_PRESENT" in runner
+    assert "ANTHROPIC_API_KEY_PRESENT" in runner
+    assert "OPENAI_API_KEY" in runner
+    assert "ANTHROPIC_API_KEY" in runner
+    assert "exit 67" in runner
+
+
+def test_sister_repository_contract_parity():
+    """The shared Git-triggered OpenCode contract files stay byte-identical."""
+    sibling_names = [
+        name
+        for name in ["benge-property-cad", "file-template-cad"]
+        if name != PROJECT_ROOT.name
+    ]
+    sibling = next(
+        (
+            PROJECT_ROOT.parent / name
+            for name in sibling_names
+            if (PROJECT_ROOT.parent / name / ".aicad" / "schema" / "git-opencode-run-v1.schema.json").is_file()
+        ),
+        None,
+    )
+    if sibling is None:
+        pytest.skip("sister repository is not present in this workspace")
+    shared = [
+        ".github/workflows/opencode.yml",
+        "tools/run-git-opencode-audit",
+        ".aicad/schema/git-opencode-run-v1.schema.json",
+        "tests/test_git_opencode_audit.py",
+    ]
+    for relative in shared:
+        assert (PROJECT_ROOT / relative).read_bytes() == (sibling / relative).read_bytes(), (
+            f"shared contract file diverged: {relative}"
+        )
 
 
 def test_ci_yml_required_jobs():

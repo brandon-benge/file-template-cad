@@ -2,13 +2,190 @@
 set -Eeuo pipefail
 
 readonly TRIGGER_FILE="${1:?Usage: $0 <trigger.json>}"
-readonly MODEL="${OPENCODE_MODEL:?OPENCODE_MODEL is required}"
+readonly MODEL_REFERENCE="${AICAD_OPENCODE_MODEL:-}"
 readonly AGENT="${OPENCODE_AGENT:?OPENCODE_AGENT is required}"
 readonly VALIDATOR="${AICAD_VALIDATION_EXECUTABLE:?AICAD_VALIDATION_EXECUTABLE is required}"
 readonly FAILURE_ARTIFACT_ROOT="${AICAD_FAILURE_ARTIFACT_DIR:?AICAD_FAILURE_ARTIFACT_DIR is required}"
 readonly MAX_EVENTS_BYTES=8388608
 readonly MAX_EVENT_LINE_BYTES=262144
 readonly MAX_STDERR_BYTES=1048576
+readonly MAX_MODEL_REFERENCE_BYTES=256
+readonly MAX_MODEL_CATALOG_BYTES=1048576
+readonly PROVIDER_SECRET_ENV_NAMES="OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GITHUB_TOKEN"
+
+# The fixed provider -> credential environment-variable table is shared with
+# the AI CAD app and asserted by the workflow-policy and app tests.
+readonly OPENCODE_GO_ENV=OPENCODE_API_KEY
+readonly OPENAI_ENV=OPENAI_API_KEY
+readonly ANTHROPIC_ENV=ANTHROPIC_API_KEY
+
+export AICAD_SECRET_ENV_NAMES="$PROVIDER_SECRET_ENV_NAMES"
+export AICAD_MAX_MODEL_CATALOG_BYTES="$MAX_MODEL_CATALOG_BYTES"
+
+# Validate the repository-scoped provider/model reference before OpenCode runs.
+# The reference is required but never falls back to a default model. Sets the
+# provider_id/model_id/model_parse_error globals and returns 0 on success.
+validate_model_reference() {
+  local reference="$1"
+  model_parse_error=""
+  provider_id=""
+  model_id=""
+  if test -z "$reference"; then
+    model_parse_error="AICAD_OPENCODE_MODEL is not set; configure the repository variable"
+    return 1
+  fi
+  if test "$(printf '%s' "$reference" | wc -c)" -gt "$MAX_MODEL_REFERENCE_BYTES"; then
+    model_parse_error="AICAD_OPENCODE_MODEL exceeds $MAX_MODEL_REFERENCE_BYTES bytes"
+    return 1
+  fi
+  if test "$(printf '%s' "$reference" | tr -cd '/')" != "/"; then
+    model_parse_error="AICAD_OPENCODE_MODEL must be exactly providerID/modelID with one slash"
+    return 1
+  fi
+  case "$reference" in
+    *[[:space:][:cntrl:]]*)
+      model_parse_error="AICAD_OPENCODE_MODEL must not contain whitespace or control characters"
+      return 1 ;;
+  esac
+  local provider="${reference%%/*}"
+  local model="${reference#*/}"
+  if test -z "$provider" || test -z "$model"; then
+    model_parse_error="AICAD_OPENCODE_MODEL provider and model ids must both be non-empty"
+    return 1
+  fi
+  local env_name=""
+  case "$provider" in
+    opencode-go) env_name="$OPENCODE_GO_ENV" ;;
+    openai) env_name="$OPENAI_ENV" ;;
+    anthropic) env_name="$ANTHROPIC_ENV" ;;
+    *) model_parse_error="Unknown provider id: $provider"; return 1 ;;
+  esac
+  if test -z "${!env_name:-}"; then
+    model_parse_error="$env_name is not set for provider $provider; add the provider API key repository secret"
+    return 1
+  fi
+  provider_id="$provider"
+  model_id="$model"
+  return 0
+}
+
+# Copies the bounded run evidence into the validated failure artifact directory.
+write_failure_artifact() {
+  mkdir "$FAILURE_RUN_DIR"
+  cp "$TEMP_RUN/run.json" "$TEMP_RUN/events.jsonl" "$FAILURE_RUN_DIR/"
+  cp "$TEMP_ROOT/stderr.log" "$FAILURE_RUN_DIR/stderr.log"
+  jq -n \
+    --arg run_id "$RUN_ID" \
+    --slurpfile events "$TEMP_ROOT/events-stats.json" \
+    --slurpfile stderr "$TEMP_ROOT/stderr-stats.json" \
+    '{artifact_schema_version: 1, run_id: $run_id, events: $events[0], stderr: $stderr[0]}' \
+    > "$FAILURE_RUN_DIR/artifact.json"
+}
+
+# Defensive, bounded, redacted diagnostic dump for failed runs. The catalog is
+# captured only here so successful runs never pay for it. All three provider
+# credentials plus GITHUB_TOKEN are redacted before persistence.
+write_diagnostic_dump() {
+  local version=""
+  version="$(opencode --version 2>/dev/null || printf 'unavailable')"
+  test -n "$version" || version="unavailable"
+  : > "$TEMP_ROOT/model-catalog.raw"
+  if command -v opencode >/dev/null 2>&1; then
+    (opencode models 2>/dev/null || printf 'opencode models failed\n') > "$TEMP_ROOT/model-catalog.raw" || true
+  else
+    printf 'opencode not found\n' > "$TEMP_ROOT/model-catalog.raw"
+  fi
+  python3 - "$TEMP_ROOT/model-catalog.raw" "$TEMP_ROOT/model-catalog.txt" "$TEMP_ROOT/model-catalog-stats.json" <<'PY'
+import hashlib, json, os, sys
+source, destination, stats_path = sys.argv[1:]
+secret_env_names = os.environ.get("AICAD_SECRET_ENV_NAMES", "").split()
+secrets = [value for name in secret_env_names for value in [os.environ.get(name, "")] if value]
+raw = open(source, "rb").read()
+text = raw.decode("utf-8", "replace")
+for secret in secrets:
+    text = text.replace(secret, "[authentication protected]")
+encoded = text.encode("utf-8")
+limit = int(os.environ.get("AICAD_MAX_MODEL_CATALOG_BYTES", "1048576"))
+truncated = len(encoded) > limit
+retained = encoded[:limit] if truncated else encoded
+open(destination, "wb").write(retained)
+json.dump({
+    "original_bytes": len(encoded),
+    "retained_bytes": len(retained),
+    "truncated": truncated,
+    "sha256": hashlib.sha256(retained).hexdigest(),
+}, open(stats_path, "w"))
+PY
+  jq -n \
+    --arg version "$version" \
+    --slurpfile catalog "$TEMP_ROOT/model-catalog-stats.json" \
+    --rawfile catalog_text "$TEMP_ROOT/model-catalog.txt" \
+    --arg reference "$MODEL_REFERENCE" \
+    --arg provider_id "${provider_id:-}" \
+    --arg model_id "${model_id:-}" \
+    --arg parse_error "${model_parse_error:-}" \
+    --argjson presence "$presence_json" \
+    '{
+      artifact_schema_version: 1,
+      opencode_version: $version,
+      model_catalog: ($catalog[0] + {text: $catalog_text}),
+      attempted_reference: $reference,
+      parse: {provider_id: $provider_id, model_id: $model_id, error: (if $parse_error == "" then null else $parse_error end)},
+      credential_presence: $presence
+    }' > "$FAILURE_RUN_DIR/provider-model-diagnostic.json"
+}
+
+# Fail-fast path for an invalid or unset provider/model selection. Writes the
+# standard failure artifact plus the diagnostic dump and exits 67 before
+# OpenCode runs. No fallback model is ever substituted.
+fail_model_selection() {
+  status="failed"
+  failure_stage="model_selection"
+  opencode_exit=0
+  filter_exit=0
+  validation_exit=0
+  completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  : > "$TEMP_RUN/events.jsonl"
+  : > "$TEMP_ROOT/stderr.log"
+  printf '%s\n' '{"original_bytes":0,"retained_bytes":0,"truncated":false}' > "$TEMP_ROOT/events-stats.json"
+  printf '%s\n' '{"original_bytes":0,"retained_bytes":0,"truncated":false}' > "$TEMP_ROOT/stderr-stats.json"
+  local events_sha="$(shasum -a 256 "$TEMP_RUN/events.jsonl" | awk '{print $1}')"
+  local opencode_version="$(opencode --version 2>/dev/null || printf 'unavailable')"
+  jq -n \
+    --slurpfile trigger "$TEMP_ROOT/safe-trigger.json" \
+    --slurpfile stats "$TEMP_ROOT/events-stats.json" \
+    --arg run_id "$RUN_ID" \
+    --arg model "$MODEL_REFERENCE" \
+    --arg agent "$AGENT" \
+    --arg opencode_version "$opencode_version" \
+    --arg provider_id "${provider_id:-}" \
+    --arg model_id "${model_id:-}" \
+    --argjson presence "$presence_json" \
+    --arg started_at "$started_at" \
+    --arg completed_at "$completed_at" \
+    --arg start_sha "$START_SHA" \
+    --arg events_sha "$events_sha" \
+    '{
+      schema_version: 1,
+      run_id: $run_id,
+      source: "github-actions",
+      github: $trigger[0],
+      opencode: {version: $opencode_version, model: $model, agent: $agent, exit_code: 0, provider_id: $provider_id, model_id: $model_id, credential_presence: $presence},
+      started_at: $started_at,
+      completed_at: $completed_at,
+      status: "failed",
+      failure_stage: "model_selection",
+      starting_revision: $start_sha,
+      candidate_changed_paths: [],
+      validation: [{command: "python-cad validate --project-root .", exit_code: 0}],
+      events: ($stats[0] + {sha256: $events_sha})
+    }' > "$TEMP_RUN/run.json"
+  write_failure_artifact
+  write_diagnostic_dump
+  echo "OpenCode model selection failed: $model_parse_error" >&2
+  echo "OpenCode transaction failed at model_selection; repository history was not changed" >&2
+  exit 67
+}
 
 ROOT="$(git rev-parse --show-toplevel)"
 test "$ROOT" = "$(pwd -P)" || { echo "Run from the repository root" >&2; exit 64; }
@@ -41,7 +218,8 @@ cp "$TRIGGER_FILE" "$TEMP_ROOT/trigger.json"
 python3 - "$TRIGGER_FILE" "$TEMP_ROOT/safe-trigger.json" <<'PY'
 import json, os, sys
 source, destination = sys.argv[1:]
-secrets = [value for value in (os.environ.get("OPENCODE_API_KEY", ""), os.environ.get("GITHUB_TOKEN", "")) if value]
+secret_env_names = os.environ.get("AICAD_SECRET_ENV_NAMES", "").split()
+secrets = [value for name in secret_env_names for value in [os.environ.get(name, "")] if value]
 value = json.load(open(source))
 def protect(item):
     if isinstance(item, dict): return {key: protect(child) for key, child in item.items()}
@@ -61,6 +239,14 @@ cleanup() { rm -rf "$TEMP_ROOT"; }
 trap cleanup EXIT
 
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+presence_json="$(jq -n \
+  --argjson opencode "$(if test -n "${OPENCODE_API_KEY:-}"; then printf true; else printf false; fi)" \
+  --argjson openai "$(if test -n "${OPENAI_API_KEY:-}"; then printf true; else printf false; fi)" \
+  --argjson anthropic "$(if test -n "${ANTHROPIC_API_KEY:-}"; then printf true; else printf false; fi)" \
+  '{OPENCODE_API_KEY_PRESENT: $opencode, OPENAI_API_KEY_PRESENT: $openai, ANTHROPIC_API_KEY_PRESENT: $anthropic}')"
+validate_model_reference "$MODEL_REFERENCE" || fail_model_selection
+
 event_name="$(jq -r '.event_name' "$TRIGGER_FILE")"
 issue_number="$(jq -r '.issue.number' "$TRIGGER_FILE")"
 issue_title="$(jq -r '.issue.title // ""' "$TRIGGER_FILE")"
@@ -85,7 +271,8 @@ import json, os, sys
 
 limit = int(os.environ["AICAD_EVENTS_LIMIT"])
 line_limit = int(os.environ["AICAD_EVENT_LINE_LIMIT"])
-secrets = [value for value in (os.environ.get("OPENCODE_API_KEY", ""), os.environ.get("GITHUB_TOKEN", "")) if value]
+secret_env_names = os.environ.get("AICAD_SECRET_ENV_NAMES", "").split()
+secrets = [value for name in secret_env_names for value in [os.environ.get(name, "")] if value]
 retained = 0
 total = 0
 truncated = False
@@ -120,7 +307,8 @@ PY
 cat > "$TEMP_ROOT/stderr-filter.py" <<'PY'
 import json, os, sys
 limit = int(os.environ["AICAD_STDERR_LIMIT"])
-secrets = [value for value in (os.environ.get("OPENCODE_API_KEY", ""), os.environ.get("GITHUB_TOKEN", "")) if value]
+secret_env_names = os.environ.get("AICAD_SECRET_ENV_NAMES", "").split()
+secrets = [value for name in secret_env_names for value in [os.environ.get(name, "")] if value]
 retained = 0
 total = 0
 truncated = False
@@ -151,7 +339,7 @@ export AICAD_EVENTS_STATS="$TEMP_ROOT/events-stats.json"
 export AICAD_STDERR_LIMIT="$MAX_STDERR_BYTES"
 export AICAD_STDERR_FILE="$TEMP_ROOT/stderr.log"
 export AICAD_STDERR_STATS="$TEMP_ROOT/stderr-stats.json"
-opencode run --format json --model "$MODEL" --agent "$AGENT" -- "$prompt" \
+opencode run --format json --model "$MODEL_REFERENCE" --agent "$AGENT" -- "$prompt" \
   2> >(python3 "$TEMP_ROOT/stderr-filter.py") \
   | python3 "$TEMP_ROOT/filter.py"
 pipeline_status=("${PIPESTATUS[@]}")
@@ -215,15 +403,18 @@ fi
 
 completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 events_sha="$(shasum -a 256 "$TEMP_RUN/events.jsonl" | awk '{print $1}')"
-opencode_version="$(opencode --version)"
+opencode_version="$(opencode --version 2>/dev/null || printf 'unavailable')"
 jq -n \
   --slurpfile trigger "$TEMP_ROOT/safe-trigger.json" \
   --slurpfile paths "$TEMP_ROOT/changed-paths.json" \
   --slurpfile stats "$TEMP_ROOT/events-stats.json" \
   --arg run_id "$RUN_ID" \
-  --arg model "$MODEL" \
+  --arg model "$MODEL_REFERENCE" \
   --arg agent "$AGENT" \
   --arg opencode_version "$opencode_version" \
+  --arg provider_id "${provider_id:-}" \
+  --arg model_id "${model_id:-}" \
+  --argjson presence "$presence_json" \
   --arg started_at "$started_at" \
   --arg completed_at "$completed_at" \
   --arg status "$status" \
@@ -237,7 +428,7 @@ jq -n \
     run_id: $run_id,
     source: "github-actions",
     github: $trigger[0],
-    opencode: {version: $opencode_version, model: $model, agent: $agent, exit_code: $opencode_exit},
+    opencode: {version: $opencode_version, model: $model, agent: $agent, exit_code: $opencode_exit, provider_id: $provider_id, model_id: $model_id, credential_presence: $presence},
     started_at: $started_at,
     completed_at: $completed_at,
     status: $status,
@@ -250,20 +441,9 @@ jq -n \
 
 test "$(wc -c < "$TEMP_RUN/run.json")" -le 262144 || { echo "Audit manifest exceeds V1 limit" >&2; exit 66; }
 
-write_failure_artifact() {
-  mkdir "$FAILURE_RUN_DIR"
-  cp "$TEMP_RUN/run.json" "$TEMP_RUN/events.jsonl" "$FAILURE_RUN_DIR/"
-  cp "$TEMP_ROOT/stderr.log" "$FAILURE_RUN_DIR/stderr.log"
-  jq -n \
-    --arg run_id "$RUN_ID" \
-    --slurpfile events "$TEMP_ROOT/events-stats.json" \
-    --slurpfile stderr "$TEMP_ROOT/stderr-stats.json" \
-    '{artifact_schema_version: 1, run_id: $run_id, events: $events[0], stderr: $stderr[0]}' \
-    > "$FAILURE_RUN_DIR/artifact.json"
-}
-
 if test "$status" = "failed"; then
   write_failure_artifact
+  write_diagnostic_dump
   echo "OpenCode transaction failed at $failure_stage; repository history was not changed" >&2
   if test "$failure_stage" = "unexpected_commit"; then
     git reset --hard "$START_SHA"

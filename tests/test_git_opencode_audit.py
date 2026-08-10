@@ -45,6 +45,7 @@ def transaction(tmp_path: Path) -> Transaction:
     tools = tmp_path / "bin"
     artifacts = tmp_path / "artifacts"
     trigger = tmp_path / "trigger.json"
+    called = tmp_path / "opencode-called.txt"
     validator = tools / "validator"
     opencode = tools / "opencode"
 
@@ -63,12 +64,23 @@ def transaction(tmp_path: Path) -> Transaction:
     opencode.write_text(
         """#!/usr/bin/env bash
 set -eu
+printf '%s\\n' "${1:-}" >> "${AICAD_TEST_CALLED_FILE:-/dev/null}"
 if test "${1:-}" = "--version"; then
   echo "1.15.2"
   exit 0
 fi
+if test "${1:-}" = "models"; then
+  if test -n "${AICAD_TEST_CATALOG_SIZE:-}"; then
+    yes x | head -c "$AICAD_TEST_CATALOG_SIZE"
+  else
+    printf '%s\\n' "catalog provider opencode-go model test-model"
+    printf '%s\\n' "catalog provider openai model gpt-test"
+  fi
+  exit 0
+fi
 printf '%s\\n' '{"type":"message","text":"safe event"}'
-printf '%s\\n' "stderr ${OPENCODE_API_KEY:-}" >&2
+printf '%s\\n' "stdout ${OPENCODE_API_KEY:-} ${OPENAI_API_KEY:-} ${ANTHROPIC_API_KEY:-} ${GITHUB_TOKEN:-}"
+printf '%s\\n' "stderr ${OPENCODE_API_KEY:-} ${OPENAI_API_KEY:-} ${ANTHROPIC_API_KEY:-} ${GITHUB_TOKEN:-}" >&2
 case "${AICAD_TEST_OPENCODE_MODE:-nochange}" in
   fail) exit 7 ;;
   change) printf '%s\\n' changed > config.py ;;
@@ -110,12 +122,13 @@ exit "${AICAD_TEST_VALIDATION_EXIT:-0}"
     env.update(
         {
             "PATH": f"{tools}{os.pathsep}{env['PATH']}",
-            "OPENCODE_MODEL": "test/model",
+            "AICAD_OPENCODE_MODEL": "opencode-go/test-model",
             "OPENCODE_AGENT": "test-agent",
             "OPENCODE_API_KEY": "secret-test-value",
             "AICAD_VALIDATION_EXECUTABLE": str(validator),
             "AICAD_FAILURE_ARTIFACT_DIR": str(artifacts),
             "RUNNER_TEMP": str(tmp_path),
+            "AICAD_TEST_CALLED_FILE": str(called),
         }
     )
     start = run("git", "rev-parse", "HEAD", cwd=checkout).stdout.strip()
@@ -147,6 +160,11 @@ def heads(transaction: Transaction) -> tuple[str, str]:
         "git", "--git-dir", transaction["remote"], "rev-parse", "refs/heads/main", cwd=transaction["checkout"]
     ).stdout.strip()
     return local, remote
+
+
+def called_commands(transaction: Transaction) -> list[str]:
+    path = Path(transaction["env"]["AICAD_TEST_CALLED_FILE"])
+    return path.read_text().splitlines() if path.exists() else []
 
 
 @pytest.mark.parametrize(
@@ -185,7 +203,15 @@ def test_success_commits_source_and_audit_atomically(transaction: Transaction):
     changed = run("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", cwd=transaction["checkout"])
     assert "config.py" in changed.stdout
     assert ".aicad/audit/v1/100-1/run.json" in changed.stdout
-    assert json.loads((transaction["checkout"] / ".aicad/audit/v1/100-1/run.json").read_text())["status"] == "completed"
+    manifest = json.loads((transaction["checkout"] / ".aicad/audit/v1/100-1/run.json").read_text())
+    assert manifest["status"] == "completed"
+    assert manifest["opencode"]["provider_id"] == "opencode-go"
+    assert manifest["opencode"]["model_id"] == "test-model"
+    assert manifest["opencode"]["credential_presence"] == {
+        "OPENCODE_API_KEY_PRESENT": True,
+        "OPENAI_API_KEY_PRESENT": False,
+        "ANTHROPIC_API_KEY_PRESENT": False,
+    }
     assert not (transaction["artifacts"] / "100-1").exists()
 
 
@@ -230,3 +256,196 @@ def test_push_failure_does_not_advance_remote_and_keeps_artifact(transaction: Tr
     assert remote == transaction["start"]
     assert (transaction["artifacts"] / "100-1" / "run.json").is_file()
     assert "force" not in result.stderr.lower()
+
+
+def test_bare_model_id_rejected_before_opencode(transaction: Transaction):
+    result = execute(transaction, AICAD_OPENCODE_MODEL="glm-5.2")
+
+    assert result.returncode == 67
+    assert heads(transaction) == (transaction["start"], transaction["start"])
+    assert not (transaction["checkout"] / ".aicad" / "audit" / "v1" / "100-1").exists()
+    artifact = transaction["artifacts"] / "100-1"
+    manifest = json.loads((artifact / "run.json").read_text())
+    assert manifest["status"] == "failed"
+    assert manifest["failure_stage"] == "model_selection"
+    assert "not changed" in result.stderr
+    assert "run" not in called_commands(transaction)
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "/model",
+        "provider/",
+        "a/b/c",
+        "provider/model with space",
+        "provider/model\t",
+        "provider/mode\x7f",
+    ],
+)
+def test_malformed_model_reference_rejected(transaction: Transaction, reference: str):
+    result = execute(transaction, AICAD_OPENCODE_MODEL=reference)
+
+    assert result.returncode == 67
+    assert heads(transaction) == (transaction["start"], transaction["start"])
+    artifact = transaction["artifacts"] / "100-1"
+    manifest = json.loads((artifact / "run.json").read_text())
+    assert manifest["failure_stage"] == "model_selection"
+    assert "run" not in called_commands(transaction)
+
+
+def test_oversized_model_reference_rejected(transaction: Transaction):
+    result = execute(transaction, AICAD_OPENCODE_MODEL=f"p/{'m' * 300}")
+
+    assert result.returncode == 67
+    assert "exceeds 256 bytes" in result.stderr
+    assert "run" not in called_commands(transaction)
+
+
+def test_unknown_provider_rejected(transaction: Transaction):
+    result = execute(transaction, AICAD_OPENCODE_MODEL="unknown/model")
+
+    assert result.returncode == 67
+    assert "Unknown provider id" in result.stderr
+    assert "run" not in called_commands(transaction)
+
+
+def test_missing_credential_rejected_without_fallback(transaction: Transaction):
+    env = {key: value for key, value in transaction["env"].items() if key != "OPENCODE_API_KEY"}
+    result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
+
+    assert result.returncode == 67
+    assert "OPENCODE_API_KEY is not set" in result.stderr
+    assert "run" not in called_commands(transaction)
+    artifact = transaction["artifacts"] / "100-1"
+    manifest = json.loads((artifact / "run.json").read_text())
+    assert manifest["failure_stage"] == "model_selection"
+    assert manifest["opencode"]["credential_presence"]["OPENCODE_API_KEY_PRESENT"] is False
+
+
+def test_empty_credential_rejected_without_fallback(transaction: Transaction):
+    result = execute(transaction, OPENCODE_API_KEY="")
+
+    assert result.returncode == 67
+    assert "OPENCODE_API_KEY is not set" in result.stderr
+    assert "run" not in called_commands(transaction)
+
+
+def test_unset_model_reference_fails_and_writes_dump(transaction: Transaction):
+    env = {key: value for key, value in transaction["env"].items() if key != "AICAD_OPENCODE_MODEL"}
+    result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
+
+    assert result.returncode == 67
+    assert "AICAD_OPENCODE_MODEL is not set" in result.stderr
+    dump = json.loads((transaction["artifacts"] / "100-1" / "provider-model-diagnostic.json").read_text())
+    assert dump["attempted_reference"] == ""
+    assert dump["parse"]["error"]
+
+
+def test_openai_provider_proceeds_with_openai_key(transaction: Transaction):
+    env = {key: value for key, value in transaction["env"].items() if key != "OPENCODE_API_KEY"}
+    env["OPENAI_API_KEY"] = "secret-openai"
+    env["AICAD_OPENCODE_MODEL"] = "openai/gpt-test"
+    env["AICAD_TEST_OPENCODE_MODE"] = "change"
+    result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
+
+    assert result.returncode == 0, result.stderr
+    local, remote = heads(transaction)
+    assert local == remote
+    assert local != transaction["start"]
+
+
+def test_anthropic_provider_proceeds_with_anthropic_key(transaction: Transaction):
+    env = {key: value for key, value in transaction["env"].items() if key != "OPENCODE_API_KEY"}
+    env["ANTHROPIC_API_KEY"] = "secret-anthropic"
+    env["AICAD_OPENCODE_MODEL"] = "anthropic/claude-test"
+    env["AICAD_TEST_OPENCODE_MODE"] = "change"
+    result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
+
+    assert result.returncode == 0, result.stderr
+    local, remote = heads(transaction)
+    assert local == remote
+    assert local != transaction["start"]
+
+
+def test_failure_dump_contains_version_catalog_reference_and_presence(transaction: Transaction):
+    result = execute(transaction, AICAD_TEST_OPENCODE_MODE="fail")
+
+    assert result.returncode == 7
+    artifact = transaction["artifacts"] / "100-1"
+    dump = json.loads((artifact / "provider-model-diagnostic.json").read_text())
+    assert dump["artifact_schema_version"] == 1
+    assert dump["opencode_version"] == "1.15.2"
+    assert "opencode-go" in dump["model_catalog"]["text"]
+    assert dump["model_catalog"]["truncated"] is False
+    assert dump["attempted_reference"] == "opencode-go/test-model"
+    assert dump["parse"]["provider_id"] == "opencode-go"
+    assert dump["parse"]["model_id"] == "test-model"
+    assert dump["parse"]["error"] is None
+    assert dump["credential_presence"]["OPENCODE_API_KEY_PRESENT"] is True
+    assert dump["credential_presence"]["OPENAI_API_KEY_PRESENT"] is False
+    assert dump["credential_presence"]["ANTHROPIC_API_KEY_PRESENT"] is False
+
+
+def test_failure_dump_contains_parse_error_for_bare_reference(transaction: Transaction):
+    result = execute(transaction, AICAD_OPENCODE_MODEL="glm-5.2")
+
+    assert result.returncode == 67
+    dump = json.loads((transaction["artifacts"] / "100-1" / "provider-model-diagnostic.json").read_text())
+    assert dump["attempted_reference"] == "glm-5.2"
+    assert dump["parse"]["error"]
+    assert dump["parse"]["provider_id"] == ""
+
+
+def test_dump_catalog_respects_byte_bound(transaction: Transaction):
+    result = execute(transaction, AICAD_TEST_OPENCODE_MODE="fail", AICAD_TEST_CATALOG_SIZE="2097152")
+
+    assert result.returncode == 7
+    dump = json.loads((transaction["artifacts"] / "100-1" / "provider-model-diagnostic.json").read_text())
+    assert dump["model_catalog"]["truncated"] is True
+    assert dump["model_catalog"]["retained_bytes"] == 1048576
+    assert dump["model_catalog"]["original_bytes"] > 1048576
+    assert len(dump["model_catalog"]["text"]) == 1048576
+    assert len(dump["model_catalog"]["sha256"]) == 64
+
+
+def test_no_provider_secret_values_in_failure_artifacts(transaction: Transaction):
+    env = dict(transaction["env"])
+    env["OPENAI_API_KEY"] = "secret-openai"
+    env["ANTHROPIC_API_KEY"] = "secret-anthropic"
+    env["GITHUB_TOKEN"] = "secret-github-token"
+    env["AICAD_TEST_OPENCODE_MODE"] = "fail"
+    result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
+
+    assert result.returncode == 7
+    artifact = transaction["artifacts"] / "100-1"
+    secrets = ["secret-test-value", "secret-openai", "secret-anthropic", "secret-github-token"]
+    for name in ["run.json", "events.jsonl", "stderr.log", "artifact.json", "provider-model-diagnostic.json"]:
+        text = (artifact / name).read_text()
+        for secret in secrets:
+            assert secret not in text, f"{name} contains {secret}"
+    # The fake prints all three provider keys and GITHUB_TOKEN to stdout and
+    # stderr; both filter paths must redact every one.
+    assert "[authentication protected]" in (artifact / "stderr.log").read_text()
+    for secret in secrets:
+        assert secret not in result.stdout, f"stdout contains {secret}"
+
+
+def test_diagnostic_dump_tolerates_failing_opencode(transaction: Transaction):
+    failing_bin = transaction["checkout"].parent / "failing-bin"
+    failing_bin.mkdir()
+    broken = failing_bin / "opencode"
+    broken.write_text("#!/usr/bin/env bash\nexit 1\n")
+    broken.chmod(0o755)
+    env = dict(transaction["env"])
+    env["PATH"] = f"{failing_bin}{os.pathsep}{env['PATH']}"
+    env["AICAD_TEST_OPENCODE_MODE"] = "fail"
+    result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
+
+    assert result.returncode != 0
+    artifact = transaction["artifacts"] / "100-1"
+    dump = json.loads((artifact / "provider-model-diagnostic.json").read_text())
+    assert dump["opencode_version"] == "unavailable"
+    assert "opencode models failed" in dump["model_catalog"]["text"]
+    assert dump["model_catalog"]["retained_bytes"] == len(dump["model_catalog"]["text"].encode("utf-8"))
+    assert len(dump["model_catalog"]["sha256"]) == 64

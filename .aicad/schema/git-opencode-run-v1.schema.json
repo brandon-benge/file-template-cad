@@ -21,7 +21,14 @@
         "version": {"type": "string", "maxLength": 64},
         "model": {"type": "string", "maxLength": 256},
         "agent": {"type": "string", "maxLength": 128},
-        "exit_code": {"type": "integer"}
+        "exit_code": {"type": "integer"},
+        "provider_id": {"type": "string", "maxLength": 256},
+        "model_id": {"type": "string", "maxLength": 256},
+        "credential_presence": {
+          "type": "object",
+          "additionalProperties": {"type": "boolean"},
+          "maxProperties": 3
+        }
       }
     },
     "started_at": {"type": "string", "format": "date-time"},
