@@ -292,17 +292,30 @@ def test_rebuild_yml_has_no_hardcoded_version_or_local_wheel():
     assert "test-with-cad-override" not in text
 
 
-def test_rebuild_yml_never_commits_or_mutates_locks():
+def test_rebuild_yml_never_commits_directly_to_main_or_touches_pyproject():
     text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "git commit" not in text
     assert "pip-compile" not in text
+    assert "pyproject.toml" not in text
     assert "install-selected-python-cad-tools" in text
-    # The only requirements path allowed is the committed dev lock passed to
-    # the runner, which installs from a temporary reconciled file.
+    # The only requirements path allowed is the committed dev lock, reconciled
+    # in place by the same tool used for the ephemeral install (never a
+    # temporary --output-file path or a raw shell redirect elsewhere).
     assert "requirements/locks/dev-ubuntu-x86_64-py313.lock" in text
-    # No shell redirection or output-file writes into the project tree.
-    assert "> requirements" not in text
     assert "--output-file" not in text
+    assert "> requirements" not in text
+    # A lock update commits to its own branch and goes through a pull
+    # request; the deploy job itself never commits to main.
+    assert 'git checkout -b "$branch"' in text
+    assert "gh pr create" in text
+    assert "--base main" in text
+
+
+def test_rebuild_yml_lock_update_runs_only_after_a_successful_deploy():
+    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
+    assert "update-lock:" in text
+    update_lock = text.split("update-lock:", 1)[1]
+    assert "needs: rebuild-and-deploy" in update_lock
+    assert "needs.rebuild-and-deploy.result == 'success'" in update_lock
 
 
 def test_rebuild_yml_permissions_least_privilege():
@@ -311,6 +324,7 @@ def test_rebuild_yml_permissions_least_privilege():
     assert "contents: write" in text
     assert "pages: write" in text
     assert "id-token: write" in text
+    assert "pull-requests: write" in text
 
 
 def test_rebuild_yml_derives_base_path_from_repository_name():
