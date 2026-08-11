@@ -106,11 +106,7 @@ def test_opencode_runner_owns_model_selection_validation():
 
 def test_sister_repository_contract_parity():
     """The shared Git-triggered OpenCode contract files stay byte-identical."""
-    sibling_names = [
-        name
-        for name in ["benge-property-cad", "file-template-cad"]
-        if name != PROJECT_ROOT.name
-    ]
+    sibling_names = [name for name in ["benge-property-cad", "file-template-cad"] if name != PROJECT_ROOT.name]
     sibling = next(
         (
             PROJECT_ROOT.parent / name

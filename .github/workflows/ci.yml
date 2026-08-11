@@ -29,7 +29,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install pip-tools
-        run: pip install pip-tools
+        run: |
+          # pip-tools' pip-compile transitively imports pip._internal internals
+          # that pip 26.2 removed (jazzband/pip-tools#2436, fixed post-7.6.0 but
+          # not yet released to PyPI). Pin pip below the break until a pip-tools
+          # release includes the fix.
+          pip install "pip<26.2"
+          pip install pip-tools
       - name: Regenerate native dev lock
         id: lock
         shell: python
@@ -69,7 +75,13 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install pip-tools
-        run: pip install pip-tools
+        run: |
+          # pip-tools' pip-compile transitively imports pip._internal internals
+          # that pip 26.2 removed (jazzband/pip-tools#2436, fixed post-7.6.0 but
+          # not yet released to PyPI). Pin pip below the break until a pip-tools
+          # release includes the fix.
+          pip install "pip<26.2"
+          pip install pip-tools
       - name: Generate dev lock
         run: |
           pip-compile --extra=dev --generate-hashes \
@@ -96,7 +108,13 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install pip-tools
-        run: pip install pip-tools
+        run: |
+          # pip-tools' pip-compile transitively imports pip._internal internals
+          # that pip 26.2 removed (jazzband/pip-tools#2436, fixed post-7.6.0 but
+          # not yet released to PyPI). Pin pip below the break until a pip-tools
+          # release includes the fix.
+          pip install "pip<26.2"
+          pip install pip-tools
       - name: Generate dev lock
         run: |
           pip-compile --extra=dev --generate-hashes \
