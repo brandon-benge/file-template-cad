@@ -148,7 +148,9 @@ licensed-trade approval.
 ## Agent governance
 
 See `AGENTS.md` for repository boundaries, responsibilities, writable scope,
-and verification expectations for the project roles:
+verification expectations, and the two-tier authoring contract (Tier 1
+verified authoring vs. Tier 2 supported-but-unverified direct library access)
+for the project roles:
 
 - `file-design-maintainer`
 - `file-artifact-reviewer`

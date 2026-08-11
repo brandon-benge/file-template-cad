@@ -242,6 +242,32 @@ def test_agents_md_has_separation_of_duties():
     assert "Repository boundary" in text
 
 
+def test_agents_md_states_the_two_tier_authoring_contract():
+    text = (PROJECT_ROOT / "AGENTS.md").read_text()
+    assert "Authoring tiers" in text
+    assert "Tier 1" in text and "Tier 2" in text
+    assert "verified authoring" in text
+    assert "unverified direct library access" in text
+    assert "two-tier-contract.md" in text
+    # Each agent states its own tier boundary; no agent claims Tier 1
+    # guarantees for Tier 2 (directly-authored) artifacts.
+    design_maintainer = text.split("## File Design Maintainer", 1)[1].split("## File Artifact Reviewer", 1)[0]
+    assert "Tier 1" in design_maintainer and "Tier 2" in design_maintainer
+    artifact_reviewer = text.split("## File Artifact Reviewer", 1)[1].split("## CAD Compatibility Verifier", 1)[0]
+    assert "Tier 1" in artifact_reviewer
+    assert "Out of scope" in artifact_reviewer and "Tier 2" in artifact_reviewer
+    compatibility_verifier = text.split("## CAD Compatibility Verifier", 1)[1]
+    assert "Tier 1 verification" in compatibility_verifier
+    assert "Tier 2 verification" in compatibility_verifier
+    assert "does not assert artifact determinism" in compatibility_verifier
+
+
+def test_readme_agent_governance_references_the_tier_contract():
+    text = (PROJECT_ROOT / "README.md").read_text()
+    section = text.split("## Agent governance", 1)[1]
+    assert "Tier 1" in section and "Tier 2" in section
+
+
 def test_rebuild_yml_exists():
     assert (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").is_file()
 

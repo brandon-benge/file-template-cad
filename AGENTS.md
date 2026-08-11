@@ -40,6 +40,28 @@ Preserve stable semantic IDs, including existing `complex.*` IDs, unless an
 intentional migration is part of the request. Create or update geometry and its
 metadata together.
 
+## Authoring tiers
+
+`python-cad-tools` defines a two-tier authoring contract (see its
+`docs/two-tier-contract.md`):
+
+- **Tier 1 — verified authoring.** Authoring through `DesignModel` /
+  `DesignElement` using documented fields — any concrete `IfcElement` subtype
+  in `IfcMapping`, `openings` for voids, `properties` for user properties,
+  `storey` for multi-storey, and the `Dimension` drawing primitive — produces
+  deterministic, manifest-hashed, round-trip-verified, multi-format-consistent
+  artifacts through `build_project`.
+- **Tier 2 — supported, unverified direct library access.** Direct imports of
+  a library named in `python-cad-tools`'s `docs/toolchain.md` (for example
+  `ifcopenshell`, `trimesh`) for reading, querying, validating, or
+  post-processing. The framework guarantees the library installs and
+  interoperates; it does not guarantee determinism, manifest coverage, or
+  multi-format consistency for artifacts authored this way.
+
+When the neutral model lacks a feature a design needs, file a SpecRepo request
+against `python-cad-tools` rather than bypassing to Tier 2 for an artifact that
+needs Tier 1 verification.
+
 ## Agents and responsibilities
 
 | Agent | Responsibility | May modify |
@@ -84,6 +106,11 @@ boundary.
 
 ## File Design Maintainer
 
+Tier 1 is the design maintainer's primary boundary: author through
+`DesignModel` / `DesignElement` using documented fields. Tier 2 (direct
+library imports) is available for reading, querying, validating, and
+post-processing. See "Authoring tiers" above.
+
 The design maintainer:
 
 - edits only the authoritative design source
@@ -102,7 +129,10 @@ return an upstream `python-cad-tools` requirement with evidence.
 
 The artifact reviewer is read-only and may inspect only content under
 `generated/`, including artifacts, manifests, drawings, reports, logs, and site
-content.
+content. In scope: Tier 1 artifacts produced by `build_project`, including IFC
+user property sets, quantity sets, storey assignment, openings, and drawing
+dimensions. Out of scope: artifacts produced by Tier 2 direct library use
+outside `build_project`.
 
 It must not:
 
@@ -119,7 +149,11 @@ recommended responsibility owner, and acceptance evidence.
 ## CAD Compatibility Verifier
 
 The compatibility verifier is read-only. It operates against the current
-project and installed environment.
+project and installed environment. Tier 1 verification covers library
+install, import, and interop; the project-declared `validate`/`build`/`verify`
+checks; manifest hashes, round-trip IDs, and schema validation; and
+multi-format consistency. Tier 2 verification covers library install and
+import only — it does not assert artifact determinism or manifest coverage.
 
 It must:
 
