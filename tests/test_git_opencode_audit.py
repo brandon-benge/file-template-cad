@@ -79,8 +79,8 @@ if test "${1:-}" = "models"; then
   exit 0
 fi
 printf '%s\\n' '{"type":"message","text":"safe event"}'
-printf '%s\\n' "stdout ${OPENCODE_API_KEY:-} ${OPENAI_API_KEY:-} ${ANTHROPIC_API_KEY:-} ${GITHUB_TOKEN:-}"
-printf '%s\\n' "stderr ${OPENCODE_API_KEY:-} ${OPENAI_API_KEY:-} ${ANTHROPIC_API_KEY:-} ${GITHUB_TOKEN:-}" >&2
+printf '%s\\n' "stdout ${OPENCODE_API_KEY:-} ${OPENAI_API_KEY:-} ${ANTHROPIC_API_KEY:-} ${GOOGLE_API_KEY:-} ${OPENROUTER_API_KEY:-} ${GROQ_API_KEY:-} ${XAI_API_KEY:-} ${DEEPINFRA_API_KEY:-} ${MISTRAL_API_KEY:-} ${GITHUB_TOKEN:-}"
+printf '%s\\n' "stderr ${OPENCODE_API_KEY:-} ${OPENAI_API_KEY:-} ${ANTHROPIC_API_KEY:-} ${GOOGLE_API_KEY:-} ${OPENROUTER_API_KEY:-} ${GROQ_API_KEY:-} ${XAI_API_KEY:-} ${DEEPINFRA_API_KEY:-} ${MISTRAL_API_KEY:-} ${GITHUB_TOKEN:-}" >&2
 case "${AICAD_TEST_OPENCODE_MODE:-nochange}" in
   fail) exit 7 ;;
   change) printf '%s\\n' changed > config.py ;;
@@ -211,6 +211,12 @@ def test_success_commits_source_and_audit_atomically(transaction: Transaction):
         "OPENCODE_API_KEY_PRESENT": True,
         "OPENAI_API_KEY_PRESENT": False,
         "ANTHROPIC_API_KEY_PRESENT": False,
+        "GOOGLE_API_KEY_PRESENT": False,
+        "OPENROUTER_API_KEY_PRESENT": False,
+        "GROQ_API_KEY_PRESENT": False,
+        "XAI_API_KEY_PRESENT": False,
+        "DEEPINFRA_API_KEY_PRESENT": False,
+        "MISTRAL_API_KEY_PRESENT": False,
     }
     assert not (transaction["artifacts"] / "100-1").exists()
 
@@ -368,6 +374,44 @@ def test_anthropic_provider_proceeds_with_anthropic_key(transaction: Transaction
     assert local != transaction["start"]
 
 
+def test_opencode_zen_provider_proceeds_with_opencode_key(transaction: Transaction):
+    env = dict(transaction["env"])
+    env["AICAD_OPENCODE_MODEL"] = "opencode-zen/glm-test"
+    env["AICAD_TEST_OPENCODE_MODE"] = "change"
+    result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
+
+    assert result.returncode == 0, result.stderr
+    local, remote = heads(transaction)
+    assert local == remote
+    assert local != transaction["start"]
+
+
+@pytest.mark.parametrize(
+    ("provider_id", "env_name", "secret_value"),
+    [
+        ("google", "GOOGLE_API_KEY", "secret-google"),
+        ("openrouter", "OPENROUTER_API_KEY", "secret-openrouter"),
+        ("groq", "GROQ_API_KEY", "secret-groq"),
+        ("xai", "XAI_API_KEY", "secret-xai"),
+        ("deepinfra", "DEEPINFRA_API_KEY", "secret-deepinfra"),
+        ("mistral", "MISTRAL_API_KEY", "secret-mistral"),
+    ],
+)
+def test_provider_proceeds_with_matching_key(
+    transaction: Transaction, provider_id: str, env_name: str, secret_value: str
+):
+    env = {key: value for key, value in transaction["env"].items() if key != "OPENCODE_API_KEY"}
+    env[env_name] = secret_value
+    env["AICAD_OPENCODE_MODEL"] = f"{provider_id}/model-test"
+    env["AICAD_TEST_OPENCODE_MODE"] = "change"
+    result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
+
+    assert result.returncode == 0, result.stderr
+    local, remote = heads(transaction)
+    assert local == remote
+    assert local != transaction["start"]
+
+
 def test_failure_dump_contains_version_catalog_reference_and_presence(transaction: Transaction):
     result = execute(transaction, AICAD_TEST_OPENCODE_MODE="fail")
 
@@ -413,18 +457,35 @@ def test_no_provider_secret_values_in_failure_artifacts(transaction: Transaction
     env = dict(transaction["env"])
     env["OPENAI_API_KEY"] = "secret-openai"
     env["ANTHROPIC_API_KEY"] = "secret-anthropic"
+    env["GOOGLE_API_KEY"] = "secret-google"
+    env["OPENROUTER_API_KEY"] = "secret-openrouter"
+    env["GROQ_API_KEY"] = "secret-groq"
+    env["XAI_API_KEY"] = "secret-xai"
+    env["DEEPINFRA_API_KEY"] = "secret-deepinfra"
+    env["MISTRAL_API_KEY"] = "secret-mistral"
     env["GITHUB_TOKEN"] = "secret-github-token"
     env["AICAD_TEST_OPENCODE_MODE"] = "fail"
     result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
 
     assert result.returncode == 7
     artifact = transaction["artifacts"] / "100-1"
-    secrets = ["secret-test-value", "secret-openai", "secret-anthropic", "secret-github-token"]
+    secrets = [
+        "secret-test-value",
+        "secret-openai",
+        "secret-anthropic",
+        "secret-google",
+        "secret-openrouter",
+        "secret-groq",
+        "secret-xai",
+        "secret-deepinfra",
+        "secret-mistral",
+        "secret-github-token",
+    ]
     for name in ["run.json", "events.jsonl", "stderr.log", "artifact.json", "provider-model-diagnostic.json"]:
         text = (artifact / name).read_text()
         for secret in secrets:
             assert secret not in text, f"{name} contains {secret}"
-    # The fake prints all three provider keys and GITHUB_TOKEN to stdout and
+    # The fake prints every provider key and GITHUB_TOKEN to stdout and
     # stderr; both filter paths must redact every one.
     assert "[authentication protected]" in (artifact / "stderr.log").read_text()
     for secret in secrets:

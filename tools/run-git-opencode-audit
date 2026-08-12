@@ -11,13 +11,20 @@ readonly MAX_EVENT_LINE_BYTES=262144
 readonly MAX_STDERR_BYTES=1048576
 readonly MAX_MODEL_REFERENCE_BYTES=256
 readonly MAX_MODEL_CATALOG_BYTES=1048576
-readonly PROVIDER_SECRET_ENV_NAMES="OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GITHUB_TOKEN"
+readonly PROVIDER_SECRET_ENV_NAMES="OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GOOGLE_API_KEY OPENROUTER_API_KEY GROQ_API_KEY XAI_API_KEY DEEPINFRA_API_KEY MISTRAL_API_KEY GITHUB_TOKEN"
 
 # The fixed provider -> credential environment-variable table is shared with
 # the AI CAD app and asserted by the workflow-policy and app tests.
+readonly OPENCODE_ZEN_ENV=OPENCODE_API_KEY
 readonly OPENCODE_GO_ENV=OPENCODE_API_KEY
 readonly OPENAI_ENV=OPENAI_API_KEY
 readonly ANTHROPIC_ENV=ANTHROPIC_API_KEY
+readonly GOOGLE_ENV=GOOGLE_API_KEY
+readonly OPENROUTER_ENV=OPENROUTER_API_KEY
+readonly GROQ_ENV=GROQ_API_KEY
+readonly XAI_ENV=XAI_API_KEY
+readonly DEEPINFRA_ENV=DEEPINFRA_API_KEY
+readonly MISTRAL_ENV=MISTRAL_API_KEY
 
 export AICAD_SECRET_ENV_NAMES="$PROVIDER_SECRET_ENV_NAMES"
 export AICAD_MAX_MODEL_CATALOG_BYTES="$MAX_MODEL_CATALOG_BYTES"
@@ -55,9 +62,16 @@ validate_model_reference() {
   fi
   local env_name=""
   case "$provider" in
+    opencode-zen) env_name="$OPENCODE_ZEN_ENV" ;;
     opencode-go) env_name="$OPENCODE_GO_ENV" ;;
     openai) env_name="$OPENAI_ENV" ;;
     anthropic) env_name="$ANTHROPIC_ENV" ;;
+    google) env_name="$GOOGLE_ENV" ;;
+    openrouter) env_name="$OPENROUTER_ENV" ;;
+    groq) env_name="$GROQ_ENV" ;;
+    xai) env_name="$XAI_ENV" ;;
+    deepinfra) env_name="$DEEPINFRA_ENV" ;;
+    mistral) env_name="$MISTRAL_ENV" ;;
     *) model_parse_error="Unknown provider id: $provider"; return 1 ;;
   esac
   if test -z "${!env_name:-}"; then
@@ -244,7 +258,13 @@ presence_json="$(jq -n \
   --argjson opencode "$(if test -n "${OPENCODE_API_KEY:-}"; then printf true; else printf false; fi)" \
   --argjson openai "$(if test -n "${OPENAI_API_KEY:-}"; then printf true; else printf false; fi)" \
   --argjson anthropic "$(if test -n "${ANTHROPIC_API_KEY:-}"; then printf true; else printf false; fi)" \
-  '{OPENCODE_API_KEY_PRESENT: $opencode, OPENAI_API_KEY_PRESENT: $openai, ANTHROPIC_API_KEY_PRESENT: $anthropic}')"
+  --argjson google "$(if test -n "${GOOGLE_API_KEY:-}"; then printf true; else printf false; fi)" \
+  --argjson openrouter "$(if test -n "${OPENROUTER_API_KEY:-}"; then printf true; else printf false; fi)" \
+  --argjson groq "$(if test -n "${GROQ_API_KEY:-}"; then printf true; else printf false; fi)" \
+  --argjson xai "$(if test -n "${XAI_API_KEY:-}"; then printf true; else printf false; fi)" \
+  --argjson deepinfra "$(if test -n "${DEEPINFRA_API_KEY:-}"; then printf true; else printf false; fi)" \
+  --argjson mistral "$(if test -n "${MISTRAL_API_KEY:-}"; then printf true; else printf false; fi)" \
+  '{OPENCODE_API_KEY_PRESENT: $opencode, OPENAI_API_KEY_PRESENT: $openai, ANTHROPIC_API_KEY_PRESENT: $anthropic, GOOGLE_API_KEY_PRESENT: $google, OPENROUTER_API_KEY_PRESENT: $openrouter, GROQ_API_KEY_PRESENT: $groq, XAI_API_KEY_PRESENT: $xai, DEEPINFRA_API_KEY_PRESENT: $deepinfra, MISTRAL_API_KEY_PRESENT: $mistral}')"
 validate_model_reference "$MODEL_REFERENCE" || fail_model_selection
 
 event_name="$(jq -r '.event_name' "$TRIGGER_FILE")"
