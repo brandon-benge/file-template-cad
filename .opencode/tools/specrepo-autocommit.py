@@ -18,9 +18,11 @@ EX_USAGE = 64
 
 def print_usage() -> None:
     print(
-        'Usage: specrepo-autocommit "<summary of what changed>" [--no-push]\n\n'
+        'Usage: specrepo-autocommit "<summary of what changed>" [--no-push] '
+        "[--config-file <path>]\n\n"
         "Runs autocommit on the current git branch.\n"
-        "AUTOCOMMIT_PARAMS must point to an existing YAML configuration file.\n"
+        "--config-file points to the YAML configuration to use; defaults to "
+        "AUTOCOMMIT_PARAMS, then to .autoconfig.yaml in this repository.\n"
         "--no-push commits locally without pushing to the remote.",
         file=sys.stderr,
     )
@@ -37,16 +39,20 @@ def fail(message: str, *, config_path: Path | None = None, code: int = 1) -> NoR
     raise SystemExit(code)
 
 
-def get_config_path() -> Path:
-    raw_path = os.environ.get("AUTOCOMMIT_PARAMS", "").strip()
-    if raw_path:
-        config_path = Path(os.path.expandvars(raw_path)).expanduser().resolve()
-        print(f"AUTOCOMMIT_PARAMS is set to: {config_path}", flush=True)
+def get_config_path(explicit_path: str | None = None) -> Path:
+    if explicit_path:
+        config_path = Path(os.path.expandvars(explicit_path)).expanduser().resolve()
+        print(f"--config-file is set to: {config_path}", flush=True)
     else:
-        config_path = (
-            Path(__file__).resolve().parent.parent.parent / ".autoconfig.yaml"
-        )
-        print(f"AUTOCOMMIT_PARAMS not set, using local fallback: {config_path}", flush=True)
+        raw_path = os.environ.get("AUTOCOMMIT_PARAMS", "").strip()
+        if raw_path:
+            config_path = Path(os.path.expandvars(raw_path)).expanduser().resolve()
+            print(f"AUTOCOMMIT_PARAMS is set to: {config_path}", flush=True)
+        else:
+            config_path = (
+                Path(__file__).resolve().parent.parent.parent / ".autoconfig.yaml"
+            )
+            print(f"AUTOCOMMIT_PARAMS not set, using local fallback: {config_path}", flush=True)
 
     if not config_path.is_file():
         fail(
@@ -173,16 +179,28 @@ def run_autocommit(
 
 
 def main(argv: list[str]) -> int:
-    config_path = get_config_path()
-
-    # Extract --no-push before joining the remainder into the summary.
+    # Extract --no-push and --config-file <path> before joining the
+    # remainder into the summary.
     no_push = False
+    config_file: str | None = None
     positional: list[str] = []
-    for arg in argv[1:]:
+    args_iter = iter(argv[1:])
+    for arg in args_iter:
         if arg == "--no-push":
             no_push = True
+        elif arg == "--config-file":
+            try:
+                config_file = next(args_iter)
+            except StopIteration:
+                print_usage()
+                fail(
+                    "Autocommit blocked: --config-file requires a path argument.",
+                    code=EX_USAGE,
+                )
         else:
             positional.append(arg)
+
+    config_path = get_config_path(config_file)
 
     if not positional or not " ".join(positional).strip():
         print_usage()

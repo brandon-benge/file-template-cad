@@ -48,9 +48,11 @@ metadata together.
 - **Tier 1 — verified authoring.** Authoring through `DesignModel` /
   `DesignElement` using documented fields — any concrete `IfcElement` subtype
   in `IfcMapping`, `openings` for voids, `properties` for user properties,
-  `storey` for multi-storey, and the `Dimension` drawing primitive — produces
-  deterministic, manifest-hashed, round-trip-verified, multi-format-consistent
-  artifacts through `build_project`.
+  `storey` for multi-storey, the `Dimension` drawing primitive, and
+  `python_cad_tools.recipes` (`ExtrudedProfile`, `DifferenceRecipe`) for
+  opt-in parametric BREP IFC output — produces deterministic, manifest-hashed,
+  round-trip-verified, multi-format-consistent artifacts through
+  `build_project`.
 - **Tier 2 — supported, unverified direct library access.** Direct imports of
   a library named in `python-cad-tools`'s `docs/toolchain.md` (for example
   `ifcopenshell`, `trimesh`) for reading, querying, validating, or
