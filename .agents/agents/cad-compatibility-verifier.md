@@ -20,6 +20,15 @@ Verify the current project against the active environment and the pinned `python
 - Never fix failures.
 - Never invoke Git directly. Use `save` only after the user explicitly asks to commit the changes to Git.
 
+## Session-type limits
+
+In a local Mac AI session, PATH intentionally excludes the project's venv,
+`ruff`, `mypy`, `pytest`, and `python-cad` — this is expected for that session
+type, not a defect to keep probing around. Report it as an environment-scope
+limitation rather than searching for workarounds. Full toolchain verification
+is meaningful only for GitHub-triggered runs and CI, where the toolchain is
+provisioned.
+
 ## Verification scope
 
 By default, run only the basic non-E2E checks applicable to the request. Run

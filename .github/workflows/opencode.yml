@@ -14,6 +14,7 @@ concurrency:
 permissions:
   contents: write
   issues: write
+  actions: write
 
 jobs:
   opencode:
@@ -116,6 +117,22 @@ jobs:
           AICAD_VALIDATION_EXECUTABLE: .audit-venv/bin/python-cad
           AICAD_FAILURE_ARTIFACT_DIR: ${{ runner.temp }}/aicad-failure-artifacts
         run: tools/run-git-opencode-audit "$RUNNER_TEMP/aicad-trigger.json"
+
+      - name: Trigger downstream main-branch workflows
+        # A commit pushed here with the default GITHUB_TOKEN does not fire
+        # other workflows' `push` triggers (GitHub's anti-recursion rule:
+        # github.com/orgs/community/discussions/25702), so ci.yml,
+        # release-template.yml, and test-ci.yml would otherwise silently skip
+        # this commit, and pages.yml (which deploys off ci.yml completing)
+        # would never run either. Dispatching them explicitly is exempt from
+        # that rule and needs no additional token beyond `actions: write`.
+        # Runs only when the audit step above succeeded (a real push landed).
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run ci.yml --ref main
+          gh workflow run release-template.yml --ref main
+          gh workflow run test-ci.yml --ref main
 
       - name: Upload audit evidence when the transaction fails
         if: failure()

@@ -60,6 +60,18 @@ following together:
 A complex element is incomplete until all required semantic data exists beside
 its geometry.
 
+## Repeated validation failures
+
+If the same validation error persists after only changing numeric
+parameters, the construction code likely has a structural bug — inspect the
+helper function instead of tuning values further. For `solid-invalid`, check
+whether a `.cut()`/`.fuse()` inside the helper can split a shape into
+multiple disconnected solids (a wide/long cutter through a narrow/short
+member); if so, emit one element per resulting solid instead of one element
+wrapping a multi-solid result. See the `file-design-maintainer` skill for
+detail, and invoke `cad-compatibility-verifier` for full per-element
+validation detail when the toolchain is available.
+
 ## Delegation
 
 - Invoke `file-artifact-reviewer` when generated outputs need semantic, labeling, metadata, standards, visual, quantity, or cross-format review.
@@ -76,10 +88,10 @@ its geometry.
 3. Identify affected complex elements, IDs, types, labels, relationships, and output formats.
 4. Implement the smallest coherent parametric change.
 5. Update tests only when a change affects build, viewer, or workflow-policy behavior. Do not create or update design-input validation tests (they have been removed). Never update model-specific test assertions (IFC mappings, element IDs, annotation content, dimensions, positions, materials) in any test file — those are manual-reference snapshots.
-6. Run applicable lint, type, test, build, validation, and verification checks.
-7. Regenerate affected outputs.
+6. Do not run lint, type-check, test, build, validation, or verification commands yourself in a local Mac AI session — the toolchain is intentionally not on PATH for that session type; this is expected, not a blocker to work around.
+7. AI CAD's own build step regenerates affected outputs and runs `python-cad validate`/`build` automatically once this session finishes; `ruff`, `mypy`, and `pytest` run in CI once the user commits.
 8. Delegate independent review when useful.
 9. Resolve findings within your editable boundary.
-10. Return a concise summary, verification evidence, and unresolved blockers.
+10. Return a concise summary of the changes made and any unresolved blockers.
 
 Use only the `file-design-maintainer` skill.

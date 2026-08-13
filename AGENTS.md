@@ -119,8 +119,13 @@ The design maintainer:
 - uses only public installed `python_cad_tools` APIs
 - does not inspect or patch package source or `site-packages`
 - preserves stable semantic IDs
-- runs applicable tests, build, validation, and verification after changes
-- delegates artifact or compatibility review when needed
+- does not run build, validation, lint, type-check, or test commands itself
+  in a local Mac AI session — the toolchain is intentionally not on PATH for
+  that session type (see "Verification expectations" below); it edits
+  source and stops
+- delegates artifact review to `file-artifact-reviewer` when needed; does not
+  delegate to `cad-compatibility-verifier` to work around missing local
+  toolchain access, since that agent runs in the same restricted environment
 - never invokes Git directly and uses `save` only after an explicit user
   request to commit the changes to Git
 
@@ -197,6 +202,17 @@ exclusively owns validation and accepted Git persistence.
 Use the smallest verification tier that provides evidence proportional to the
 change. Do not run integration, viewer, or E2E tests by default for a localized
 design-source change.
+
+**Toolchain access differs by session type.** The commands below describe
+what CI (`ci.yml`) and GitHub-triggered OpenCode runs (with `.audit-venv`
+provisioned) actually execute. A local Mac AI session's PATH intentionally
+excludes the project venv and its `ruff`/`mypy`/`pytest`/`python-cad`
+executables — this is permanent for that session type, not a transient gap to
+search around. In a local Mac AI session, do not attempt these commands: make
+the source edit and stop. `ruff` and `mypy` run in `ci.yml` on every push;
+`pytest` and `python-cad` run in the E2E, pages, and rebuild workflows. AI
+CAD's own build step also runs `python-cad validate`/`build` immediately
+after a local session finishes.
 
 ### Focused tier
 
