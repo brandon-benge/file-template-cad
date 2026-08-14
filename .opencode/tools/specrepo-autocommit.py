@@ -19,11 +19,16 @@ EX_USAGE = 64
 def print_usage() -> None:
     print(
         'Usage: specrepo-autocommit "<summary of what changed>" [--no-push] '
-        "[--config-file <path>]\n\n"
+        "[--config-file <path>] [--env-var-name <NAME>] [--base-url <URL>] "
+        "[--model <MODEL>]\n\n"
         "Runs autocommit on the current git branch.\n"
         "--config-file points to the YAML configuration to use; defaults to "
         "AUTOCOMMIT_PARAMS, then to .autoconfig.yaml in this repository.\n"
-        "--no-push commits locally without pushing to the remote.",
+        "--no-push commits locally without pushing to the remote.\n"
+        "--env-var-name, --base-url, and --model override the LLM API key "
+        "environment variable, base URL, and model that .autoconfig.yaml "
+        "otherwise supplies, e.g. to point at the AI Settings selected in "
+        "the Mac app.",
         file=sys.stderr,
     )
 
@@ -149,7 +154,14 @@ def ensure_autocommit_installed(config_path: Path) -> str:
 
 
 def run_autocommit(
-    executable: str, config_path: Path, summary: str, branch: str, no_push: bool = False
+    executable: str,
+    config_path: Path,
+    summary: str,
+    branch: str,
+    no_push: bool = False,
+    env_var_name: str | None = None,
+    base_url: str | None = None,
+    model: str | None = None,
 ) -> None:
     print(f"Running autocommit on branch {branch}.")
     command = [
@@ -162,6 +174,12 @@ def run_autocommit(
     ]
     if no_push:
         command.append("--no-push")
+    if env_var_name:
+        command += ["--env-var", "--env-var-name", env_var_name]
+    if base_url:
+        command += ["--base-url", base_url]
+    if model:
+        command += ["--model", model]
     try:
         result = subprocess.run(command, check=False)
     except OSError as error:
@@ -179,24 +197,35 @@ def run_autocommit(
 
 
 def main(argv: list[str]) -> int:
-    # Extract --no-push and --config-file <path> before joining the
-    # remainder into the summary.
+    # Extract --no-push, --config-file <path>, and the LLM override flags
+    # before joining the remainder into the summary.
     no_push = False
     config_file: str | None = None
+    env_var_name: str | None = None
+    base_url: str | None = None
+    model: str | None = None
     positional: list[str] = []
     args_iter = iter(argv[1:])
     for arg in args_iter:
         if arg == "--no-push":
             no_push = True
-        elif arg == "--config-file":
+        elif arg in ("--config-file", "--env-var-name", "--base-url", "--model"):
             try:
-                config_file = next(args_iter)
+                value = next(args_iter)
             except StopIteration:
                 print_usage()
                 fail(
-                    "Autocommit blocked: --config-file requires a path argument.",
+                    f"Autocommit blocked: {arg} requires a value argument.",
                     code=EX_USAGE,
                 )
+            if arg == "--config-file":
+                config_file = value
+            elif arg == "--env-var-name":
+                env_var_name = value
+            elif arg == "--base-url":
+                base_url = value
+            else:
+                model = value
         else:
             positional.append(arg)
 
@@ -213,7 +242,16 @@ def main(argv: list[str]) -> int:
     summary = " ".join(positional).strip()
     branch = get_current_branch(config_path)
     executable = ensure_autocommit_installed(config_path)
-    run_autocommit(executable, config_path, summary, branch, no_push=no_push)
+    run_autocommit(
+        executable,
+        config_path,
+        summary,
+        branch,
+        no_push=no_push,
+        env_var_name=env_var_name,
+        base_url=base_url,
+        model=model,
+    )
     return 0
 
 

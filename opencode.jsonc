@@ -37,7 +37,7 @@
         "todowrite": "allow",
         "webfetch": "ask",
         "websearch": "ask",
-        "question": "allow"
+        "question": "deny"
       }
     },
     "file-artifact-reviewer": {
@@ -68,7 +68,7 @@
         "todowrite": "allow",
         "webfetch": "ask",
         "websearch": "ask",
-        "question": "allow"
+        "question": "deny"
       }
     },
     "cad-compatibility-verifier": {
@@ -99,7 +99,7 @@
         "todowrite": "allow",
         "webfetch": "allow",
         "websearch": "allow",
-        "question": "allow"
+        "question": "deny"
       }
     },
     "build": {
@@ -122,7 +122,7 @@
         "todowrite": "allow",
         "webfetch": "deny",
         "websearch": "deny",
-        "question": "allow"
+        "question": "deny"
       }
     }
   }

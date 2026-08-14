@@ -106,6 +106,19 @@ Delegation must be bounded:
 delegation. This file describes expected behavior but is not an authorization
 boundary.
 
+## Question policy
+
+`opencode.jsonc` sets `permission.question` to `deny` for every agent in this
+repository, so an OpenCode session must never pause a task to ask the user a
+clarifying question. When a request is ambiguous, make the best-supported
+assumption from available evidence (design source, generated artifacts, and
+this file), state that assumption, and proceed, or return the request
+unresolved with the specific blocker. This restriction applies only to
+OpenCode sessions governed by this `opencode.jsonc`; other agent runtimes
+working in this repository (for example local Mac AI / Claude Code sessions)
+are not bound by it and may ask the user clarifying questions when genuinely
+blocked.
+
 ## File Design Maintainer
 
 Tier 1 is the design maintainer's primary boundary: author through
