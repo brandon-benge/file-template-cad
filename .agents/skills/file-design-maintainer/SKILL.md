@@ -134,20 +134,28 @@ piece is itself a valid solid.
 
 ### Finding which element failed
 
-The validation message you receive (in a local Mac AI session, or from
-`python-cad validate`'s CLI output) reports only the issue code and message —
-not which element failed. Element stable IDs follow
-`complex.<slug(category)>.<slug(name)>`, generated from the `category`/`name`
-arguments passed to `add_shape`/`add_box`/`add_cylinder` (or an explicit
-`stable_id` override). Use the error code to narrow the search: `solid-invalid`
-only applies to `physical=True` elements; `recipe-*` codes only apply to
-elements built from a `ConstructionRecipe`. Audit the most recently changed
-call sites of that kind first.
+Element stable IDs follow `complex.<slug(category)>.<slug(name)>`, generated
+from the `category`/`name` arguments passed to
+`add_shape`/`add_box`/`add_cylinder` (or an explicit `stable_id` override).
+Use the error code to narrow the search: `solid-invalid` only applies to
+`physical=True` elements; `recipe-*` codes only apply to elements built from
+a `ConstructionRecipe`. Audit the most recently changed call sites of that
+kind first.
 
-When the toolchain is available (CI or a GitHub-triggered run — not a local
-Mac AI session), invoke `cad-compatibility-verifier` to get full per-issue
-detail, including `element_id`, instead of relying on the CLI's single joined
-message.
+If `python-cad validate`'s error doesn't already show an `element_id` in
+brackets after the code (older `python-cad-tools` versions omit it), get full
+per-issue detail directly through the Python API instead of the CLI's joined
+message:
+
+```text
+python3 -c "
+from pathlib import Path
+from python_cad_tools.build import validate_project, ValidationOptions
+report = validate_project(ValidationOptions(Path('.'), None))
+for issue in report.issues:
+    print(issue.severity, issue.code, issue.element_id, issue.message)
+"
+```
 
 ## Subagent use
 
@@ -166,8 +174,6 @@ Invoke `cad-compatibility-verifier` for:
 - lock and platform compatibility
 - command failures
 - output parser or structural validity questions
-- full per-element validation detail (element IDs) when the toolchain is
-  available
 - HTTP, site, or browser verification
 - suspected upstream package defects
 
@@ -190,26 +196,29 @@ Invoke `save` only after the user explicitly asks to commit the changes to Git.
 3. Identify affected complex IDs, types, labels, metadata, and relationships.
 4. Implement the smallest coherent parametric change.
 5. Update or add focused tests only when a change affects build, viewer, or workflow-policy behavior. Do not create or update design-input validation tests (they have been removed). Never update model-specific test assertions (IFC mappings, element IDs, annotation content, dimensions, positions, materials) in any test file — those are manual-reference snapshots.
-6. In a local Mac AI session, do not select or run a verification tier
-   yourself — the toolchain (`ruff`, `mypy`, `pytest`, `python-cad`) is
-   intentionally not on PATH for that session type; treat this as permanent,
-   not a gap to search around.
-7. The tiers described in `AGENTS.md` (focused, export-sensitive, full/E2E)
-   describe what CI and GitHub-triggered runs execute — not commands to run
-   in a local Mac AI session.
-8. AI CAD's own build step regenerates affected outputs and runs
-   `python-cad validate`/`build` automatically after this session finishes.
-9. Inspect generated evidence only when it is already available from a prior
-   build; do not trigger a build yourself to produce it.
+6. Select the smallest sufficient verification tier from `AGENTS.md`:
+   - focused for localized parameters, geometry, annotations, metadata, or
+     tests
+   - export-sensitive for solids, semantics, materials, relationships,
+     quantities, drawings, or output formats
+   - full/E2E only for broad, UI/site, upgrade, diagnostic, or explicitly
+     requested coverage
+7. Finish every edit the request requires before running anything. Then run
+   the selected tier's checks once — static checks, affected test files or
+   node IDs, and `python-cad validate`/`build` when the tier calls for it. Do
+   not re-run checks after each individual edit; that spends turns without
+   adding signal, and CI runs the full sequence again once the user commits.
+8. If verification fails, fix the specific failure and re-verify once. If it
+   still fails after a genuine fix attempt, stop and report the exact
+   command, error, and affected element or stable ID instead of continuing
+   to guess — see "Debugging repeated validation failures" above.
+9. Inspect generated evidence when outputs were rebuilt.
 10. Delegate independent review where appropriate.
 11. Resolve findings within the editable scope.
-12. Return changed files, affected stable IDs, and any unresolved blockers.
+12. Return changed files, affected stable IDs, verification results, and any
+    unresolved blockers.
 
 ## Completion evidence
-
-In a local Mac AI session, "commands run" and "generated outputs" are
-typically empty — validation and output generation happen in AI CAD's own
-build step and in CI, not during this session.
 
 Report:
 
@@ -217,7 +226,7 @@ Report:
 - affected stable IDs and complex types
 - labels or metadata added or changed
 - tests added or changed
-- commands run
+- commands run and their result
 - generated outputs
 - delegated review results
 - unresolved blockers

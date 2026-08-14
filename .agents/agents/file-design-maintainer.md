@@ -69,8 +69,7 @@ whether a `.cut()`/`.fuse()` inside the helper can split a shape into
 multiple disconnected solids (a wide/long cutter through a narrow/short
 member); if so, emit one element per resulting solid instead of one element
 wrapping a multi-solid result. See the `file-design-maintainer` skill for
-detail, and invoke `cad-compatibility-verifier` for full per-element
-validation detail when the toolchain is available.
+detail, including how to get full per-element validation detail.
 
 ## Delegation
 
@@ -88,10 +87,15 @@ validation detail when the toolchain is available.
 3. Identify affected complex elements, IDs, types, labels, relationships, and output formats.
 4. Implement the smallest coherent parametric change.
 5. Update tests only when a change affects build, viewer, or workflow-policy behavior. Do not create or update design-input validation tests (they have been removed). Never update model-specific test assertions (IFC mappings, element IDs, annotation content, dimensions, positions, materials) in any test file — those are manual-reference snapshots.
-6. Do not run lint, type-check, test, build, validation, or verification commands yourself in a local Mac AI session — the toolchain is intentionally not on PATH for that session type; this is expected, not a blocker to work around.
-7. AI CAD's own build step regenerates affected outputs and runs `python-cad validate`/`build` automatically once this session finishes; `ruff`, `mypy`, and `pytest` run in CI once the user commits.
+6. Finish every edit the request requires first. Then, once, run the
+   applicable lint, type, test, build, and validation checks — not after
+   each individual edit. CI re-runs the full sequence once the user commits;
+   your one end-of-session pass is to catch and fix problems before that,
+   not to duplicate it repeatedly.
+7. Regenerate affected outputs when verification ran a build.
 8. Delegate independent review when useful.
 9. Resolve findings within your editable boundary.
-10. Return a concise summary of the changes made and any unresolved blockers.
+10. Return a concise summary of the changes made, verification results, and
+    any unresolved blockers.
 
 Use only the `file-design-maintainer` skill.

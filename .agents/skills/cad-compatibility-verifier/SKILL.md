@@ -58,11 +58,6 @@ only to the patch component, such as `0.1.4` to `0.1.5`, never requires E2E.
 
 ## Verification sequence
 
-In a local Mac AI session, this toolchain is intentionally not on PATH —
-these commands only run where the toolchain is actually provisioned (CI's
-`ci.yml`, and GitHub-triggered OpenCode runs via `.audit-venv`). Do not search
-for alternate invocations locally; report the limitation instead.
-
 Run only commands supported by the current project.
 
 Typical basic sequence:
@@ -79,11 +74,11 @@ validation, verification, determinism, site, HTTP, and browser checks.
 
 ### Element-level validation detail
 
-`python-cad validate`'s CLI output joins every error into one message and
-omits which element each one applies to. When more than pass/fail is needed —
-for example, diagnosing a `solid-invalid` or `recipe-*` failure for
-`file-design-maintainer` — get full per-issue detail, including
-`element_id`, through the Python API instead of the CLI:
+Newer `python-cad-tools` versions include each failing `element_id` directly
+in `python-cad validate`'s CLI message (`code[element_id]: message`). If the
+installed version predates that and the message shows only `code: message`,
+get full per-issue detail, including `element_id`, through the Python API
+instead:
 
 ```text
 python3 -c "
