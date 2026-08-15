@@ -39,6 +39,7 @@ def test_opencode_workflow_owns_a_bounded_audit_transaction():
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
     runner = (PROJECT_ROOT / "tools" / "run-git-opencode-audit").read_text()
     watchdog = (PROJECT_ROOT / "tools" / "run-with-inactivity-watchdog").read_text()
+    ubuntu_lock = (PROJECT_ROOT / "requirements" / "locks" / "dev-ubuntu-x86_64-py313.lock").read_text()
     schema = PROJECT_ROOT / ".aicad" / "schema" / "git-opencode-run-v1.schema.json"
     assert "opencode-ai@latest" in workflow
     assert "Install latest OpenCode" in workflow
@@ -61,6 +62,12 @@ def test_opencode_workflow_owns_a_bounded_audit_transaction():
     assert "MAX_EVENTS_BYTES=8388608" in runner
     assert "DEFAULT_OPENCODE_INACTIVITY_SECONDS=600" in runner
     assert "run-with-inactivity-watchdog" in runner
+    assert "Run every long-running test, validation, build, and verification command as a separate tool call" in runner
+    assert "Do not chain commands with &&, ;, or pipes" in runner
+    assert "do not start these commands in parallel or in the background" in runner
+    assert "Finish all requested geometry, metadata, material, and user-facing-name edits" in runner
+    assert "After final verification succeeds, do not make another source edit" in runner
+    assert "pytest-xdist==" in ubuntu_lock
     assert "start_new_session=True" in watchdog
     assert "cache: pip" in workflow
     assert "uses: actions/cache@v4" in workflow

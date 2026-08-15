@@ -293,7 +293,7 @@ fi
 prompt="$(printf '%s\n\n%s\n\n%s' \
   "Work on GitHub issue #$issue_number: $issue_title" \
   "$request_text" \
-  'Follow repository governance. Make only requested source changes and run relevant checks. Do not run git, commit, push, or edit .aicad/audit; the workflow owns validation and Git persistence.')"
+  'Follow repository governance. Make only requested source changes and run relevant checks. Finish all requested geometry, metadata, material, and user-facing-name edits before starting final verification. After final verification succeeds, do not make another source edit unless a concrete check or requested acceptance criterion failed. Run every long-running test, validation, build, and verification command as a separate tool call. Do not chain commands with &&, ;, or pipes, and do not start these commands in parallel or in the background. Wait for each command to finish before starting the next so progress and failures remain observable. Do not run git, commit, push, or edit .aicad/audit; the workflow owns validation and Git persistence.')"
 
 # Filter stdout before both display and persistence. Exact known credentials
 # are replaced, oversized lines are represented by a valid JSON marker, and
