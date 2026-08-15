@@ -18,6 +18,7 @@ tools/
 !tools/
 tools/*
 !tools/run-git-opencode-audit
+!tools/run-with-inactivity-watchdog
 !tools/install-selected-python-cad-tools
 viewer/
 backup/

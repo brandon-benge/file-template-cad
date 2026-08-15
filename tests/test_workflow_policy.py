@@ -38,12 +38,14 @@ def test_opencode_workflow_uses_one_non_cancelling_repository_queue():
 def test_opencode_workflow_owns_a_bounded_audit_transaction():
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
     runner = (PROJECT_ROOT / "tools" / "run-git-opencode-audit").read_text()
+    watchdog = (PROJECT_ROOT / "tools" / "run-with-inactivity-watchdog").read_text()
     schema = PROJECT_ROOT / ".aicad" / "schema" / "git-opencode-run-v1.schema.json"
-    assert "opencode-ai@1.15.2" in workflow
+    assert "opencode-ai@latest" in workflow
+    assert "Install latest OpenCode" in workflow
     assert "anomalyco/opencode/github@latest" not in workflow
     assert "tools/run-git-opencode-audit" in workflow
     assert "--format json" in runner
-    assert "PIPESTATUS" in runner
+    assert "run-with-inactivity-watchdog" in runner
     assert "git commit" in runner
     assert "git push origin HEAD" in runner
     assert "AICAD_FAILURE_ARTIFACT_DIR" in workflow
@@ -57,6 +59,12 @@ def test_opencode_workflow_owns_a_bounded_audit_transaction():
     assert ".aicad/audit/v1/${{ github.run_id }}" not in workflow
     assert "[authentication protected]" in runner
     assert "MAX_EVENTS_BYTES=8388608" in runner
+    assert "DEFAULT_OPENCODE_INACTIVITY_SECONDS=600" in runner
+    assert "run-with-inactivity-watchdog" in runner
+    assert "start_new_session=True" in watchdog
+    assert "cache: pip" in workflow
+    assert "uses: actions/cache@v4" in workflow
+    assert "validation-environment-cache" in workflow
     assert schema.is_file()
 
 
@@ -120,6 +128,7 @@ def test_sister_repository_contract_parity():
     shared = [
         ".github/workflows/opencode.yml",
         "tools/run-git-opencode-audit",
+        "tools/run-with-inactivity-watchdog",
         ".aicad/schema/git-opencode-run-v1.schema.json",
         "tests/test_git_opencode_audit.py",
         ".github/workflows/rebuild.yml",

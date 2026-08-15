@@ -83,6 +83,7 @@ printf '%s\\n' "stdout ${OPENCODE_API_KEY:-} ${OPENAI_API_KEY:-} ${ANTHROPIC_API
 printf '%s\\n' "stderr ${OPENCODE_API_KEY:-} ${OPENAI_API_KEY:-} ${ANTHROPIC_API_KEY:-} ${GOOGLE_API_KEY:-} ${OPENROUTER_API_KEY:-} ${GROQ_API_KEY:-} ${XAI_API_KEY:-} ${DEEPINFRA_API_KEY:-} ${MISTRAL_API_KEY:-} ${GITHUB_TOKEN:-}" >&2
 case "${AICAD_TEST_OPENCODE_MODE:-nochange}" in
   fail) exit 7 ;;
+  hang) sleep 30 ;;
   change) printf '%s\\n' changed > config.py ;;
   policy) printf '%s\\n' forbidden > forbidden.txt ;;
   commit)
@@ -191,6 +192,23 @@ def test_failure_does_not_commit_or_push(
     assert "secret-test-value" not in (artifact / "stderr.log").read_text()
     assert "[authentication protected]" in (artifact / "stderr.log").read_text()
     assert "repository history was not changed" in result.stderr
+
+
+def test_inactivity_watchdog_terminates_hung_opencode(transaction: Transaction):
+    result = execute(
+        transaction,
+        AICAD_TEST_OPENCODE_MODE="hang",
+        AICAD_OPENCODE_INACTIVITY_SECONDS="1",
+    )
+
+    assert result.returncode == 124
+    assert heads(transaction) == (transaction["start"], transaction["start"])
+    artifact = transaction["artifacts"] / "100-1"
+    manifest = json.loads((artifact / "run.json").read_text())
+    assert manifest["status"] == "failed"
+    assert manifest["failure_stage"] == "opencode"
+    assert manifest["opencode"]["exit_code"] == 124
+    assert "OpenCode produced no output for 1 seconds" in result.stderr
 
 
 def test_success_commits_source_and_audit_atomically(transaction: Transaction):

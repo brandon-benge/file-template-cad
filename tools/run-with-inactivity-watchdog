@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""Run a command with redacted, bounded capture and an inactivity timeout."""
+
+from __future__ import annotations
+
+import json
+import os
+import selectors
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+def main() -> int:
+    limit = int(sys.argv[1])
+    command = sys.argv[2:]
+    secret_env_names = os.environ.get("AICAD_SECRET_ENV_NAMES", "").split()
+    secrets = [
+        value
+        for name in secret_env_names
+        for value in [os.environ.get(name, "")]
+        if value
+    ]
+    events_limit = int(os.environ["AICAD_EVENTS_LIMIT"])
+    event_line_limit = int(os.environ["AICAD_EVENT_LINE_LIMIT"])
+    stderr_limit = int(os.environ["AICAD_STDERR_LIMIT"])
+    events_path = Path(os.environ["AICAD_EVENTS_FILE"])
+    events_stats_path = Path(os.environ["AICAD_EVENTS_STATS"])
+    stderr_path = Path(os.environ["AICAD_STDERR_FILE"])
+    stderr_stats_path = Path(os.environ["AICAD_STDERR_STATS"])
+
+    event_total = 0
+    event_retained = 0
+    events_truncated = False
+    stderr_total = 0
+    stderr_retained = 0
+    stderr_truncated = False
+
+    def protect(raw: bytes) -> str:
+        text = raw.decode("utf-8", "replace")
+        for secret in secrets:
+            text = text.replace(secret, "[authentication protected]")
+        return text
+
+    with events_path.open("wb") as event_output, stderr_path.open("wb") as stderr_output:
+
+        def emit_event(raw: bytes) -> None:
+            nonlocal event_total, event_retained, events_truncated
+            event_total += len(raw)
+            text = protect(raw)
+            try:
+                json.loads(text)
+            except json.JSONDecodeError:
+                text = json.dumps(
+                    {"type": "unparsed_output", "text": text.rstrip("\r\n")}
+                ) + "\n"
+            encoded = text.encode("utf-8")
+            if len(encoded) > event_line_limit:
+                encoded = (
+                    json.dumps(
+                        {"type": "truncated_event", "original_bytes": len(encoded)}
+                    )
+                    + "\n"
+                ).encode()
+            sys.stdout.buffer.write(encoded)
+            sys.stdout.buffer.flush()
+            if event_retained + len(encoded) <= events_limit:
+                event_output.write(encoded)
+                event_retained += len(encoded)
+            elif not events_truncated:
+                marker = (
+                    json.dumps(
+                        {"type": "audit_truncated", "retained_bytes": event_retained}
+                    )
+                    + "\n"
+                ).encode()
+                if event_retained + len(marker) <= events_limit:
+                    event_output.write(marker)
+                    event_retained += len(marker)
+                events_truncated = True
+
+        def emit_stderr(raw: bytes) -> None:
+            nonlocal stderr_total, stderr_retained, stderr_truncated
+            stderr_total += len(raw)
+            encoded = protect(raw).encode("utf-8")
+            sys.stderr.buffer.write(encoded)
+            sys.stderr.buffer.flush()
+            remaining = stderr_limit - stderr_retained
+            if remaining > 0:
+                chunk = encoded[:remaining]
+                stderr_output.write(chunk)
+                stderr_retained += len(chunk)
+            if len(encoded) > remaining:
+                stderr_truncated = True
+
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+
+        def stop_process_group(signum: int) -> None:
+            try:
+                os.killpg(process.pid, signum)
+            except ProcessLookupError:
+                pass
+
+        def forward_signal(signum, _frame) -> None:
+            stop_process_group(signum)
+
+        signal.signal(signal.SIGTERM, forward_signal)
+        signal.signal(signal.SIGINT, forward_signal)
+        selector = selectors.DefaultSelector()
+        selector.register(process.stdout, selectors.EVENT_READ, ("stdout", emit_event))
+        selector.register(process.stderr, selectors.EVENT_READ, ("stderr", emit_stderr))
+        buffers = {"stdout": bytearray(), "stderr": bytearray()}
+        deadline = time.monotonic() + limit
+        timed_out = False
+
+        try:
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                events = selector.select(remaining)
+                if not events:
+                    timed_out = True
+                    break
+                for key, _ in events:
+                    stream_name, emitter = key.data
+                    chunk = os.read(key.fileobj.fileno(), 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        if buffers[stream_name]:
+                            emitter(bytes(buffers[stream_name]))
+                            buffers[stream_name].clear()
+                        continue
+                    deadline = time.monotonic() + limit
+                    buffer = buffers[stream_name]
+                    buffer.extend(chunk)
+                    while True:
+                        newline = buffer.find(b"\n")
+                        if newline < 0:
+                            break
+                        line = bytes(buffer[: newline + 1])
+                        del buffer[: newline + 1]
+                        emitter(line)
+
+            if timed_out:
+                emit_stderr(
+                    f"OpenCode produced no output for {limit} seconds; "
+                    "terminating the provider session\n".encode()
+                )
+                stop_process_group(signal.SIGTERM)
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    stop_process_group(signal.SIGKILL)
+                    process.wait()
+                exit_code = 124
+            else:
+                exit_code = process.wait()
+
+        finally:
+            if process.poll() is None:
+                stop_process_group(signal.SIGKILL)
+                process.wait()
+            event_output.flush()
+            stderr_output.flush()
+
+    events_stats_path.write_text(
+        json.dumps(
+            {
+                "original_bytes": event_total,
+                "retained_bytes": event_retained,
+                "truncated": events_truncated,
+            }
+        )
+    )
+    stderr_stats_path.write_text(
+        json.dumps(
+            {
+                "original_bytes": stderr_total,
+                "retained_bytes": stderr_retained,
+                "truncated": stderr_truncated,
+            }
+        )
+    )
+    return exit_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 readonly TRIGGER_FILE="${1:?Usage: $0 <trigger.json>}"
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly MODEL_REFERENCE="${AICAD_OPENCODE_MODEL:-}"
 readonly AGENT="${OPENCODE_AGENT:?OPENCODE_AGENT is required}"
 readonly VALIDATOR="${AICAD_VALIDATION_EXECUTABLE:?AICAD_VALIDATION_EXECUTABLE is required}"
@@ -11,7 +12,18 @@ readonly MAX_EVENT_LINE_BYTES=262144
 readonly MAX_STDERR_BYTES=1048576
 readonly MAX_MODEL_REFERENCE_BYTES=256
 readonly MAX_MODEL_CATALOG_BYTES=1048576
+readonly DEFAULT_OPENCODE_INACTIVITY_SECONDS=600
 readonly PROVIDER_SECRET_ENV_NAMES="OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GOOGLE_API_KEY OPENROUTER_API_KEY GROQ_API_KEY XAI_API_KEY DEEPINFRA_API_KEY MISTRAL_API_KEY GITHUB_TOKEN"
+
+OPENCODE_INACTIVITY_SECONDS="${AICAD_OPENCODE_INACTIVITY_SECONDS:-$DEFAULT_OPENCODE_INACTIVITY_SECONDS}"
+case "$OPENCODE_INACTIVITY_SECONDS" in
+  ""|*[!0-9]*) echo "AICAD_OPENCODE_INACTIVITY_SECONDS must be a positive integer" >&2; exit 64 ;;
+esac
+test "$OPENCODE_INACTIVITY_SECONDS" -gt 0 || {
+  echo "AICAD_OPENCODE_INACTIVITY_SECONDS must be a positive integer" >&2
+  exit 64
+}
+readonly OPENCODE_INACTIVITY_SECONDS
 
 # The fixed provider -> credential environment-variable table is shared with
 # the AI CAD app and asserted by the workflow-policy and app tests.
@@ -359,13 +371,10 @@ export AICAD_EVENTS_STATS="$TEMP_ROOT/events-stats.json"
 export AICAD_STDERR_LIMIT="$MAX_STDERR_BYTES"
 export AICAD_STDERR_FILE="$TEMP_ROOT/stderr.log"
 export AICAD_STDERR_STATS="$TEMP_ROOT/stderr-stats.json"
-opencode run --format json --model "$MODEL_REFERENCE" --agent "$AGENT" -- "$prompt" \
-  2> >(python3 "$TEMP_ROOT/stderr-filter.py") \
-  | python3 "$TEMP_ROOT/filter.py"
-pipeline_status=("${PIPESTATUS[@]}")
-opencode_exit=${pipeline_status[0]}
-filter_exit=${pipeline_status[1]}
-wait || true
+python3 "$SCRIPT_DIR/run-with-inactivity-watchdog" "$OPENCODE_INACTIVITY_SECONDS" \
+  opencode run --format json --model "$MODEL_REFERENCE" --agent "$AGENT" -- "$prompt"
+opencode_exit=$?
+filter_exit=0
 set -e
 test -f "$TEMP_RUN/events.jsonl" || : > "$TEMP_RUN/events.jsonl"
 test -f "$TEMP_ROOT/events-stats.json" || printf '%s\n' \
