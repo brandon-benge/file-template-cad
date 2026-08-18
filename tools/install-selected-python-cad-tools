@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """Install python-cad-tools at the repository-selected version.
 
+Invoked by .github/workflows/rebuild.yml (manual workflow_dispatch): once in
+the `rebuild-and-deploy` job to install the version named by the
+AICAD_PYTHON_CAD_TOOLS_VERSION repository variable before building and
+deploying the site, and again in the `update-lock` job (with `--output`) to
+reconcile every requirements/locks/dev-*.lock file with that same version
+after a successful deploy. Also exercised directly by tests/test_version_install.py.
+
+Reads the selected version from an environment variable (default
+
 Reads the selected version from an environment variable (default
 ``AICAD_PYTHON_CAD_TOOLS_VERSION``). When the variable is unset or empty, the
 committed requirements lock is installed verbatim. When set, the version is

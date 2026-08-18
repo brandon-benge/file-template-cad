@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""Run a command with redacted, bounded capture and an inactivity timeout."""
+"""Run a command with redacted, bounded capture and an inactivity timeout.
+
+Internal helper invoked only by tools/run-git-opencode-audit, which runs
+`opencode run ...` through this wrapper. Not meant to be run directly or by
+any other caller.
+
+Usage: run-with-inactivity-watchdog <inactivity_seconds> <command> [args...]
+
+Streams the child's stdout/stderr live while also writing redacted, size-
+bounded copies to disk for the audit trail. The child is killed (its whole
+process group) if it produces no output for <inactivity_seconds>; exit code
+124 signals that timeout, mirroring GNU coreutils `timeout`. Reads its
+tuning knobs from env vars set by the caller: AICAD_SECRET_ENV_NAMES,
+AICAD_EVENTS_LIMIT, AICAD_EVENT_LINE_LIMIT, AICAD_STDERR_LIMIT,
+AICAD_EVENTS_FILE, AICAD_EVENTS_STATS, AICAD_STDERR_FILE, AICAD_STDERR_STATS.
+"""
 
 from __future__ import annotations
 

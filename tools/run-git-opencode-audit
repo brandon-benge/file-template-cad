@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+# Runs one Git-triggered OpenCode transaction for this repository.
+#
+# Invoked by the "Run OpenCode with repository audit" step in
+# .github/workflows/opencode.yml, which fires when the repository owner opens
+# a GitHub issue or comments "/oc" or "/opencode" on one. The workflow passes
+# a single argument: a normalized JSON trigger file describing the event.
+#
+# This script drives the whole transaction: validates the selected
+# provider/model, runs `opencode` (via tools/run-with-inactivity-watchdog for
+# bounded, redacted, inactivity-limited capture), validates the result,
+# writes a schema'd audit run under .aicad/audit/v1/<run_id>/, and commits and
+# pushes on success. On any failure it leaves repository history untouched
+# and instead writes redacted evidence to AICAD_FAILURE_ARTIFACT_DIR for the
+# workflow to upload. Not intended to be run outside that workflow.
 set -Eeuo pipefail
 
 readonly TRIGGER_FILE="${1:?Usage: $0 <trigger.json>}"
@@ -168,7 +182,6 @@ fail_model_selection() {
   status="failed"
   failure_stage="model_selection"
   opencode_exit=0
-  filter_exit=0
   validation_exit=0
   completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   : > "$TEMP_RUN/events.jsonl"
@@ -295,74 +308,6 @@ prompt="$(printf '%s\n\n%s\n\n%s' \
   "$request_text" \
   'Follow repository governance. Make only requested source changes and run relevant checks. Finish all requested geometry, metadata, material, and user-facing-name edits before starting final verification. After final verification succeeds, do not make another source edit unless a concrete check or requested acceptance criterion failed. Run every long-running test, validation, build, and verification command as a separate tool call. Do not chain commands with &&, ;, or pipes, and do not start these commands in parallel or in the background. Wait for each command to finish before starting the next so progress and failures remain observable. Do not run git, commit, push, or edit .aicad/audit; the workflow owns validation and Git persistence.')"
 
-# Filter stdout before both display and persistence. Exact known credentials
-# are replaced, oversized lines are represented by a valid JSON marker, and
-# the retained file stops at the V1 budget while stdout keeps draining.
-cat > "$TEMP_ROOT/filter.py" <<'PY'
-import json, os, sys
-
-limit = int(os.environ["AICAD_EVENTS_LIMIT"])
-line_limit = int(os.environ["AICAD_EVENT_LINE_LIMIT"])
-secret_env_names = os.environ.get("AICAD_SECRET_ENV_NAMES", "").split()
-secrets = [value for name in secret_env_names for value in [os.environ.get(name, "")] if value]
-retained = 0
-total = 0
-truncated = False
-output = open(os.environ["AICAD_EVENTS_FILE"], "wb")
-for raw in sys.stdin.buffer:
-    total += len(raw)
-    text = raw.decode("utf-8", "replace")
-    for secret in secrets:
-        text = text.replace(secret, "[authentication protected]")
-    try:
-        json.loads(text)
-    except json.JSONDecodeError:
-        text = json.dumps({"type": "unparsed_output", "text": text.rstrip("\r\n")}) + "\n"
-    encoded = text.encode("utf-8")
-    if len(encoded) > line_limit:
-        encoded = (json.dumps({"type": "truncated_event", "original_bytes": len(encoded)}) + "\n").encode()
-    sys.stdout.buffer.write(encoded)
-    sys.stdout.buffer.flush()
-    if retained + len(encoded) <= limit:
-        output.write(encoded)
-        retained += len(encoded)
-    elif not truncated:
-        marker = (json.dumps({"type": "audit_truncated", "retained_bytes": retained}) + "\n").encode()
-        if retained + len(marker) <= limit:
-            output.write(marker)
-            retained += len(marker)
-        truncated = True
-output.close()
-json.dump({"original_bytes": total, "retained_bytes": retained, "truncated": truncated}, open(os.environ["AICAD_EVENTS_STATS"], "w"))
-PY
-
-cat > "$TEMP_ROOT/stderr-filter.py" <<'PY'
-import json, os, sys
-limit = int(os.environ["AICAD_STDERR_LIMIT"])
-secret_env_names = os.environ.get("AICAD_SECRET_ENV_NAMES", "").split()
-secrets = [value for name in secret_env_names for value in [os.environ.get(name, "")] if value]
-retained = 0
-total = 0
-truncated = False
-output = open(os.environ["AICAD_STDERR_FILE"], "wb")
-for text in sys.stdin:
-    total += len(text.encode("utf-8"))
-    for secret in secrets:
-        text = text.replace(secret, "[authentication protected]")
-    sys.stderr.write(text)
-    sys.stderr.flush()
-    encoded = text.encode("utf-8")
-    remaining = limit - retained
-    if remaining > 0:
-        chunk = encoded[:remaining]
-        output.write(chunk)
-        retained += len(chunk)
-    if len(encoded) > remaining:
-        truncated = True
-output.close()
-json.dump({"original_bytes": total, "retained_bytes": retained, "truncated": truncated}, open(os.environ["AICAD_STDERR_STATS"], "w"))
-PY
-
 set +e
 export AICAD_EVENTS_LIMIT="$MAX_EVENTS_BYTES"
 export AICAD_EVENT_LINE_LIMIT="$MAX_EVENT_LINE_BYTES"
@@ -371,10 +316,13 @@ export AICAD_EVENTS_STATS="$TEMP_ROOT/events-stats.json"
 export AICAD_STDERR_LIMIT="$MAX_STDERR_BYTES"
 export AICAD_STDERR_FILE="$TEMP_ROOT/stderr.log"
 export AICAD_STDERR_STATS="$TEMP_ROOT/stderr-stats.json"
+# run-with-inactivity-watchdog itself redacts exact known credentials,
+# represents oversized lines with a valid JSON marker, and stops the
+# retained file at the V1 budget while stdout keeps draining; see that
+# script for the filtering logic applied to both stdout and stderr.
 python3 "$SCRIPT_DIR/run-with-inactivity-watchdog" "$OPENCODE_INACTIVITY_SECONDS" \
   opencode run --format json --model "$MODEL_REFERENCE" --agent "$AGENT" -- "$prompt"
 opencode_exit=$?
-filter_exit=0
 set -e
 test -f "$TEMP_RUN/events.jsonl" || : > "$TEMP_RUN/events.jsonl"
 test -f "$TEMP_ROOT/events-stats.json" || printf '%s\n' \
@@ -386,10 +334,7 @@ test -f "$TEMP_ROOT/stderr-stats.json" || printf '%s\n' \
 status="completed"
 failure_stage=""
 validation_exit=0
-if test "$filter_exit" -ne 0; then
-  status="failed"
-  failure_stage="event_capture"
-elif test "$opencode_exit" -ne 0; then
+if test "$opencode_exit" -ne 0; then
   status="failed"
   failure_stage="opencode"
 elif test "$(git rev-parse HEAD)" != "$START_SHA"; then
@@ -477,9 +422,7 @@ if test "$status" = "failed"; then
   if test "$failure_stage" = "unexpected_commit"; then
     git reset --hard "$START_SHA"
   fi
-  if test "$filter_exit" -ne 0; then
-    exit "$filter_exit"
-  elif test "$opencode_exit" -ne 0; then
+  if test "$opencode_exit" -ne 0; then
     exit "$opencode_exit"
   elif test "$validation_exit" -ne 0; then
     exit "$validation_exit"

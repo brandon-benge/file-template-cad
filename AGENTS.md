@@ -17,12 +17,8 @@ The repository consumes `python-cad-tools` as an installed PyPI package.
 
 Never copy, vendor, unpack, patch, or modify `python-cad-tools` source or
 `site-packages`. Never install it from a local checkout or as an editable
-package. A local wheel may be installed only into a disposable temporary
-environment by `tools/test-with-cad-override` when
-`PYTHON_CAD_TOOLS_OVERRIDE_WHEEL` is explicitly set; this exception must not
-change project dependency metadata, locks, or the project `.venv`. When the
-public package lacks required behavior, report an upstream requirement instead
-of creating a local tooling fork or workaround.
+package. When the public package lacks required behavior, report an upstream
+requirement instead of creating a local tooling fork or workaround.
 
 ## Authoritative design source
 
