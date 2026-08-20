@@ -64,14 +64,14 @@ def transaction(tmp_path: Path) -> Transaction:
     opencode.write_text(
         """#!/usr/bin/env bash
 set -eu
-printf '%s\\n' "${1:-}" >> "${AICAD_TEST_CALLED_FILE:-/dev/null}"
+printf '%s\\n' "${1:-}" >> "${MAKEITOURS_TEST_CALLED_FILE:-/dev/null}"
 if test "${1:-}" = "--version"; then
   echo "1.15.2"
   exit 0
 fi
 if test "${1:-}" = "models"; then
-  if test -n "${AICAD_TEST_CATALOG_SIZE:-}"; then
-    yes x | head -c "$AICAD_TEST_CATALOG_SIZE"
+  if test -n "${MAKEITOURS_TEST_CATALOG_SIZE:-}"; then
+    yes x | head -c "$MAKEITOURS_TEST_CATALOG_SIZE"
   else
     printf '%s\\n' "catalog provider opencode-go model test-model"
     printf '%s\\n' "catalog provider openai model gpt-test"
@@ -81,7 +81,7 @@ fi
 printf '%s\\n' '{"type":"message","text":"safe event"}'
 printf '%s\\n' "stdout ${OPENCODE_API_KEY:-} ${OPENAI_API_KEY:-} ${ANTHROPIC_API_KEY:-} ${GOOGLE_API_KEY:-} ${OPENROUTER_API_KEY:-} ${GROQ_API_KEY:-} ${XAI_API_KEY:-} ${DEEPINFRA_API_KEY:-} ${MISTRAL_API_KEY:-} ${GITHUB_TOKEN:-}"
 printf '%s\\n' "stderr ${OPENCODE_API_KEY:-} ${OPENAI_API_KEY:-} ${ANTHROPIC_API_KEY:-} ${GOOGLE_API_KEY:-} ${OPENROUTER_API_KEY:-} ${GROQ_API_KEY:-} ${XAI_API_KEY:-} ${DEEPINFRA_API_KEY:-} ${MISTRAL_API_KEY:-} ${GITHUB_TOKEN:-}" >&2
-case "${AICAD_TEST_OPENCODE_MODE:-nochange}" in
+case "${MAKEITOURS_TEST_OPENCODE_MODE:-nochange}" in
   fail) exit 7 ;;
   hang) sleep 30 ;;
   change) printf '%s\\n' changed > config.py ;;
@@ -96,7 +96,7 @@ esac
     )
     validator.write_text(
         """#!/usr/bin/env bash
-exit "${AICAD_TEST_VALIDATION_EXIT:-0}"
+exit "${MAKEITOURS_TEST_VALIDATION_EXIT:-0}"
 """
     )
     opencode.chmod(0o755)
@@ -123,13 +123,13 @@ exit "${AICAD_TEST_VALIDATION_EXIT:-0}"
     env.update(
         {
             "PATH": f"{tools}{os.pathsep}{env['PATH']}",
-            "AICAD_OPENCODE_MODEL": "opencode-go/test-model",
+            "MAKEITOURS_OPENCODE_MODEL": "opencode-go/test-model",
             "OPENCODE_AGENT": "test-agent",
             "OPENCODE_API_KEY": "secret-test-value",
-            "AICAD_VALIDATION_EXECUTABLE": str(validator),
-            "AICAD_FAILURE_ARTIFACT_DIR": str(artifacts),
+            "MAKEITOURS_VALIDATION_EXECUTABLE": str(validator),
+            "MAKEITOURS_FAILURE_ARTIFACT_DIR": str(artifacts),
             "RUNNER_TEMP": str(tmp_path),
-            "AICAD_TEST_CALLED_FILE": str(called),
+            "MAKEITOURS_TEST_CALLED_FILE": str(called),
         }
     )
     start = run("git", "rev-parse", "HEAD", cwd=checkout).stdout.strip()
@@ -164,17 +164,17 @@ def heads(transaction: Transaction) -> tuple[str, str]:
 
 
 def called_commands(transaction: Transaction) -> list[str]:
-    path = Path(transaction["env"]["AICAD_TEST_CALLED_FILE"])
+    path = Path(transaction["env"]["MAKEITOURS_TEST_CALLED_FILE"])
     return path.read_text().splitlines() if path.exists() else []
 
 
 @pytest.mark.parametrize(
     ("environment", "stage", "exit_code"),
     [
-        ({"AICAD_TEST_OPENCODE_MODE": "fail"}, "opencode", 7),
-        ({"AICAD_TEST_OPENCODE_MODE": "change", "AICAD_TEST_VALIDATION_EXIT": "9"}, "validation", 9),
-        ({"AICAD_TEST_OPENCODE_MODE": "commit"}, "unexpected_commit", 1),
-        ({"AICAD_TEST_OPENCODE_MODE": "policy"}, "policy", 1),
+        ({"MAKEITOURS_TEST_OPENCODE_MODE": "fail"}, "opencode", 7),
+        ({"MAKEITOURS_TEST_OPENCODE_MODE": "change", "MAKEITOURS_TEST_VALIDATION_EXIT": "9"}, "validation", 9),
+        ({"MAKEITOURS_TEST_OPENCODE_MODE": "commit"}, "unexpected_commit", 1),
+        ({"MAKEITOURS_TEST_OPENCODE_MODE": "policy"}, "policy", 1),
     ],
 )
 def test_failure_does_not_commit_or_push(
@@ -184,7 +184,7 @@ def test_failure_does_not_commit_or_push(
 
     assert result.returncode == exit_code
     assert heads(transaction) == (transaction["start"], transaction["start"])
-    assert not (transaction["checkout"] / ".aicad" / "audit" / "v1" / "100-1").exists()
+    assert not (transaction["checkout"] / ".makeitours" / "audit" / "v1" / "100-1").exists()
     artifact = transaction["artifacts"] / "100-1"
     manifest = json.loads((artifact / "run.json").read_text())
     assert manifest["status"] == "failed"
@@ -197,8 +197,8 @@ def test_failure_does_not_commit_or_push(
 def test_inactivity_watchdog_terminates_hung_opencode(transaction: Transaction):
     result = execute(
         transaction,
-        AICAD_TEST_OPENCODE_MODE="hang",
-        AICAD_OPENCODE_INACTIVITY_SECONDS="1",
+        MAKEITOURS_TEST_OPENCODE_MODE="hang",
+        MAKEITOURS_OPENCODE_INACTIVITY_SECONDS="1",
     )
 
     assert result.returncode == 124
@@ -212,7 +212,7 @@ def test_inactivity_watchdog_terminates_hung_opencode(transaction: Transaction):
 
 
 def test_success_commits_source_and_audit_atomically(transaction: Transaction):
-    result = execute(transaction, AICAD_TEST_OPENCODE_MODE="change")
+    result = execute(transaction, MAKEITOURS_TEST_OPENCODE_MODE="change")
 
     assert result.returncode == 0, result.stderr
     local, remote = heads(transaction)
@@ -220,8 +220,8 @@ def test_success_commits_source_and_audit_atomically(transaction: Transaction):
     assert local != transaction["start"]
     changed = run("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", cwd=transaction["checkout"])
     assert "config.py" in changed.stdout
-    assert ".aicad/audit/v1/100-1/run.json" in changed.stdout
-    manifest = json.loads((transaction["checkout"] / ".aicad/audit/v1/100-1/run.json").read_text())
+    assert ".makeitours/audit/v1/100-1/run.json" in changed.stdout
+    manifest = json.loads((transaction["checkout"] / ".makeitours/audit/v1/100-1/run.json").read_text())
     assert manifest["status"] == "completed"
     assert manifest["opencode"]["provider_id"] == "opencode-go"
     assert manifest["opencode"]["model_id"] == "test-model"
@@ -240,7 +240,7 @@ def test_success_commits_source_and_audit_atomically(transaction: Transaction):
 
 
 def test_successful_no_change_is_an_audit_only_success(transaction: Transaction):
-    result = execute(transaction, AICAD_TEST_OPENCODE_MODE="nochange")
+    result = execute(transaction, MAKEITOURS_TEST_OPENCODE_MODE="nochange")
 
     assert result.returncode == 0, result.stderr
     local, remote = heads(transaction)
@@ -248,10 +248,10 @@ def test_successful_no_change_is_an_audit_only_success(transaction: Transaction)
     assert local != transaction["start"]
     changed = run("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", cwd=transaction["checkout"])
     assert set(changed.stdout.splitlines()) == {
-        ".aicad/audit/v1/100-1/events.jsonl",
-        ".aicad/audit/v1/100-1/run.json",
+        ".makeitours/audit/v1/100-1/events.jsonl",
+        ".makeitours/audit/v1/100-1/run.json",
     }
-    manifest = json.loads((transaction["checkout"] / ".aicad/audit/v1/100-1/run.json").read_text())
+    manifest = json.loads((transaction["checkout"] / ".makeitours/audit/v1/100-1/run.json").read_text())
     assert manifest["status"] == "no_changes"
     assert manifest["failure_stage"] is None
     assert not (transaction["artifacts"] / "100-1").exists()
@@ -260,7 +260,7 @@ def test_successful_no_change_is_an_audit_only_success(transaction: Transaction)
 def test_rejects_failure_artifact_directory_inside_checkout(transaction: Transaction):
     result = execute(
         transaction,
-        AICAD_FAILURE_ARTIFACT_DIR=str(transaction["checkout"] / "unsafe-artifacts"),
+        MAKEITOURS_FAILURE_ARTIFACT_DIR=str(transaction["checkout"] / "unsafe-artifacts"),
     )
 
     assert result.returncode == 64
@@ -272,7 +272,7 @@ def test_push_failure_does_not_advance_remote_and_keeps_artifact(transaction: Tr
     missing_remote = transaction["remote"].parent / "missing.git"
     run("git", "remote", "set-url", "origin", missing_remote, cwd=transaction["checkout"])
 
-    result = execute(transaction, AICAD_TEST_OPENCODE_MODE="change")
+    result = execute(transaction, MAKEITOURS_TEST_OPENCODE_MODE="change")
 
     assert result.returncode != 0
     local, remote = heads(transaction)
@@ -283,11 +283,11 @@ def test_push_failure_does_not_advance_remote_and_keeps_artifact(transaction: Tr
 
 
 def test_bare_model_id_rejected_before_opencode(transaction: Transaction):
-    result = execute(transaction, AICAD_OPENCODE_MODEL="glm-5.2")
+    result = execute(transaction, MAKEITOURS_OPENCODE_MODEL="glm-5.2")
 
     assert result.returncode == 67
     assert heads(transaction) == (transaction["start"], transaction["start"])
-    assert not (transaction["checkout"] / ".aicad" / "audit" / "v1" / "100-1").exists()
+    assert not (transaction["checkout"] / ".makeitours" / "audit" / "v1" / "100-1").exists()
     artifact = transaction["artifacts"] / "100-1"
     manifest = json.loads((artifact / "run.json").read_text())
     assert manifest["status"] == "failed"
@@ -308,7 +308,7 @@ def test_bare_model_id_rejected_before_opencode(transaction: Transaction):
     ],
 )
 def test_malformed_model_reference_rejected(transaction: Transaction, reference: str):
-    result = execute(transaction, AICAD_OPENCODE_MODEL=reference)
+    result = execute(transaction, MAKEITOURS_OPENCODE_MODEL=reference)
 
     assert result.returncode == 67
     assert heads(transaction) == (transaction["start"], transaction["start"])
@@ -319,7 +319,7 @@ def test_malformed_model_reference_rejected(transaction: Transaction, reference:
 
 
 def test_oversized_model_reference_rejected(transaction: Transaction):
-    result = execute(transaction, AICAD_OPENCODE_MODEL=f"p/{'m' * 300}")
+    result = execute(transaction, MAKEITOURS_OPENCODE_MODEL=f"p/{'m' * 300}")
 
     assert result.returncode == 67
     assert "exceeds 256 bytes" in result.stderr
@@ -327,7 +327,7 @@ def test_oversized_model_reference_rejected(transaction: Transaction):
 
 
 def test_unknown_provider_rejected(transaction: Transaction):
-    result = execute(transaction, AICAD_OPENCODE_MODEL="unknown/model")
+    result = execute(transaction, MAKEITOURS_OPENCODE_MODEL="unknown/model")
 
     assert result.returncode == 67
     assert "Unknown provider id" in result.stderr
@@ -356,11 +356,11 @@ def test_empty_credential_rejected_without_fallback(transaction: Transaction):
 
 
 def test_unset_model_reference_fails_and_writes_dump(transaction: Transaction):
-    env = {key: value for key, value in transaction["env"].items() if key != "AICAD_OPENCODE_MODEL"}
+    env = {key: value for key, value in transaction["env"].items() if key != "MAKEITOURS_OPENCODE_MODEL"}
     result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
 
     assert result.returncode == 67
-    assert "AICAD_OPENCODE_MODEL is not set" in result.stderr
+    assert "MAKEITOURS_OPENCODE_MODEL is not set" in result.stderr
     dump = json.loads((transaction["artifacts"] / "100-1" / "provider-model-diagnostic.json").read_text())
     assert dump["attempted_reference"] == ""
     assert dump["parse"]["error"]
@@ -369,8 +369,8 @@ def test_unset_model_reference_fails_and_writes_dump(transaction: Transaction):
 def test_openai_provider_proceeds_with_openai_key(transaction: Transaction):
     env = {key: value for key, value in transaction["env"].items() if key != "OPENCODE_API_KEY"}
     env["OPENAI_API_KEY"] = "secret-openai"
-    env["AICAD_OPENCODE_MODEL"] = "openai/gpt-test"
-    env["AICAD_TEST_OPENCODE_MODE"] = "change"
+    env["MAKEITOURS_OPENCODE_MODEL"] = "openai/gpt-test"
+    env["MAKEITOURS_TEST_OPENCODE_MODE"] = "change"
     result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
 
     assert result.returncode == 0, result.stderr
@@ -382,8 +382,8 @@ def test_openai_provider_proceeds_with_openai_key(transaction: Transaction):
 def test_anthropic_provider_proceeds_with_anthropic_key(transaction: Transaction):
     env = {key: value for key, value in transaction["env"].items() if key != "OPENCODE_API_KEY"}
     env["ANTHROPIC_API_KEY"] = "secret-anthropic"
-    env["AICAD_OPENCODE_MODEL"] = "anthropic/claude-test"
-    env["AICAD_TEST_OPENCODE_MODE"] = "change"
+    env["MAKEITOURS_OPENCODE_MODEL"] = "anthropic/claude-test"
+    env["MAKEITOURS_TEST_OPENCODE_MODE"] = "change"
     result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
 
     assert result.returncode == 0, result.stderr
@@ -394,8 +394,8 @@ def test_anthropic_provider_proceeds_with_anthropic_key(transaction: Transaction
 
 def test_opencode_zen_provider_proceeds_with_opencode_key(transaction: Transaction):
     env = dict(transaction["env"])
-    env["AICAD_OPENCODE_MODEL"] = "opencode-zen/glm-test"
-    env["AICAD_TEST_OPENCODE_MODE"] = "change"
+    env["MAKEITOURS_OPENCODE_MODEL"] = "opencode-zen/glm-test"
+    env["MAKEITOURS_TEST_OPENCODE_MODE"] = "change"
     result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
 
     assert result.returncode == 0, result.stderr
@@ -420,8 +420,8 @@ def test_provider_proceeds_with_matching_key(
 ):
     env = {key: value for key, value in transaction["env"].items() if key != "OPENCODE_API_KEY"}
     env[env_name] = secret_value
-    env["AICAD_OPENCODE_MODEL"] = f"{provider_id}/model-test"
-    env["AICAD_TEST_OPENCODE_MODE"] = "change"
+    env["MAKEITOURS_OPENCODE_MODEL"] = f"{provider_id}/model-test"
+    env["MAKEITOURS_TEST_OPENCODE_MODE"] = "change"
     result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
 
     assert result.returncode == 0, result.stderr
@@ -431,7 +431,7 @@ def test_provider_proceeds_with_matching_key(
 
 
 def test_failure_dump_contains_version_catalog_reference_and_presence(transaction: Transaction):
-    result = execute(transaction, AICAD_TEST_OPENCODE_MODE="fail")
+    result = execute(transaction, MAKEITOURS_TEST_OPENCODE_MODE="fail")
 
     assert result.returncode == 7
     artifact = transaction["artifacts"] / "100-1"
@@ -450,7 +450,7 @@ def test_failure_dump_contains_version_catalog_reference_and_presence(transactio
 
 
 def test_failure_dump_contains_parse_error_for_bare_reference(transaction: Transaction):
-    result = execute(transaction, AICAD_OPENCODE_MODEL="glm-5.2")
+    result = execute(transaction, MAKEITOURS_OPENCODE_MODEL="glm-5.2")
 
     assert result.returncode == 67
     dump = json.loads((transaction["artifacts"] / "100-1" / "provider-model-diagnostic.json").read_text())
@@ -460,7 +460,7 @@ def test_failure_dump_contains_parse_error_for_bare_reference(transaction: Trans
 
 
 def test_dump_catalog_respects_byte_bound(transaction: Transaction):
-    result = execute(transaction, AICAD_TEST_OPENCODE_MODE="fail", AICAD_TEST_CATALOG_SIZE="2097152")
+    result = execute(transaction, MAKEITOURS_TEST_OPENCODE_MODE="fail", MAKEITOURS_TEST_CATALOG_SIZE="2097152")
 
     assert result.returncode == 7
     dump = json.loads((transaction["artifacts"] / "100-1" / "provider-model-diagnostic.json").read_text())
@@ -482,7 +482,7 @@ def test_no_provider_secret_values_in_failure_artifacts(transaction: Transaction
     env["DEEPINFRA_API_KEY"] = "secret-deepinfra"
     env["MISTRAL_API_KEY"] = "secret-mistral"
     env["GITHUB_TOKEN"] = "secret-github-token"
-    env["AICAD_TEST_OPENCODE_MODE"] = "fail"
+    env["MAKEITOURS_TEST_OPENCODE_MODE"] = "fail"
     result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
 
     assert result.returncode == 7
@@ -518,7 +518,7 @@ def test_diagnostic_dump_tolerates_failing_opencode(transaction: Transaction):
     broken.chmod(0o755)
     env = dict(transaction["env"])
     env["PATH"] = f"{failing_bin}{os.pathsep}{env['PATH']}"
-    env["AICAD_TEST_OPENCODE_MODE"] = "fail"
+    env["MAKEITOURS_TEST_OPENCODE_MODE"] = "fail"
     result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
 
     assert result.returncode != 0

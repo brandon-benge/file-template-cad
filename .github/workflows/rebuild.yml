@@ -30,7 +30,7 @@ jobs:
           python-version: "3.13"
       - name: Install selected python-cad-tools version
         env:
-          AICAD_PYTHON_CAD_TOOLS_VERSION: ${{ vars.AICAD_PYTHON_CAD_TOOLS_VERSION }}
+          MAKEITOURS_PYTHON_CAD_TOOLS_VERSION: ${{ vars.MAKEITOURS_PYTHON_CAD_TOOLS_VERSION }}
         run: |
           tools/install-selected-python-cad-tools \
             --lock requirements/locks/dev-ubuntu-x86_64-py313.lock
@@ -57,7 +57,7 @@ jobs:
         run: |
           version="$(python -c 'import importlib.metadata; print(importlib.metadata.version("python-cad-tools"))')"
           sha="$(git rev-parse --short HEAD)"
-          tag="aicad-deploy-${version}-${sha}"
+          tag="makeitours-deploy-${version}-${sha}"
           if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
             echo "Tag already exists: ${tag}"
           else
@@ -83,9 +83,9 @@ jobs:
       - name: Reconcile all committed locks with the deployed version
         id: reconcile
         env:
-          AICAD_PYTHON_CAD_TOOLS_VERSION: ${{ vars.AICAD_PYTHON_CAD_TOOLS_VERSION }}
+          MAKEITOURS_PYTHON_CAD_TOOLS_VERSION: ${{ vars.MAKEITOURS_PYTHON_CAD_TOOLS_VERSION }}
         run: |
-          if [ -z "${AICAD_PYTHON_CAD_TOOLS_VERSION}" ]; then
+          if [ -z "${MAKEITOURS_PYTHON_CAD_TOOLS_VERSION}" ]; then
             echo "No version selected; the committed locks already match what was deployed."
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -100,11 +100,11 @@ jobs:
             tools/install-selected-python-cad-tools --lock "$lock" --output "$lock"
           done
           if git diff --quiet -- requirements/locks/; then
-            echo "Locks already pin ${AICAD_PYTHON_CAD_TOOLS_VERSION}."
+            echo "Locks already pin ${MAKEITOURS_PYTHON_CAD_TOOLS_VERSION}."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "version=${AICAD_PYTHON_CAD_TOOLS_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "version=${MAKEITOURS_PYTHON_CAD_TOOLS_VERSION}" >> "$GITHUB_OUTPUT"
           fi
       - name: Open and merge the lock-update pull request
         if: steps.reconcile.outputs.changed == 'true'

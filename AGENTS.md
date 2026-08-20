@@ -199,7 +199,7 @@ the exact blocker, evidence, and user input or access needed.
 
 GitHub-triggered OpenCode runs are distinct from local Mac AI requests. They
 are serialized by the repository workflow. Accepted runs are persisted under
-`.aicad/audit/v1/`; failed or rejected runs never commit or push and retain
+`.makeitours/audit/v1/`; failed or rejected runs never commit or push and retain
 bounded evidence only in GitHub Actions logs and temporary artifacts. Agents
 must not edit, delete, or overwrite an existing audit run directory and must
 not commit or push during that workflow; the repository audit runner
@@ -215,7 +215,7 @@ project's `ruff`/`mypy`/`pytest`/`python-cad` available. Run the applicable
 tier's checks once, after finishing every edit the request requires — not
 after each individual edit, and not repeatedly while iterating. `ruff` and
 `mypy` also run in `ci.yml` on every push; `pytest` and `python-cad` also run
-in the E2E, pages, and rebuild workflows; AI CAD's own build step also runs
+in the E2E, pages, and rebuild workflows; MakeItOurs's own build step also runs
 `python-cad validate`/`build` immediately after a local session finishes.
 Your one end-of-session pass exists to catch and fix problems before those
 run, not to replace or duplicate them.
@@ -296,7 +296,7 @@ upgrade, requires E2E testing. E2E testing is also available on demand through
 the manually dispatched `File Template CAD End-to-End` GitHub Actions workflow.
 
 Dependency-version selection is a repository-settings action performed through
-the AI CAD app (`AICAD_PYTHON_CAD_TOOLS_VERSION` variable and the on-demand
+the MakeItOurs app (`MAKEITOURS_PYTHON_CAD_TOOLS_VERSION` variable and the on-demand
 rebuild workflow); it is not a prompt-driven agent task. No agent edits
 `pyproject.toml` or dependency locks to perform a version upgrade.
 

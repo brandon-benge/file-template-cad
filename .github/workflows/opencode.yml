@@ -104,7 +104,7 @@ jobs:
                 id: $event[0].comment.id,
                 body: ($event[0].comment.body // "")
               } else null end)
-            }' > "$RUNNER_TEMP/aicad-trigger.json"
+            }' > "$RUNNER_TEMP/makeitours-trigger.json"
 
       - name: Configure Git identity
         shell: bash
@@ -115,7 +115,7 @@ jobs:
       - name: Run OpenCode with repository audit
         shell: bash
         env:
-          AICAD_OPENCODE_MODEL: ${{ vars.AICAD_OPENCODE_MODEL }}
+          MAKEITOURS_OPENCODE_MODEL: ${{ vars.MAKEITOURS_OPENCODE_MODEL }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -126,9 +126,9 @@ jobs:
           DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           OPENCODE_AGENT: file-design-maintainer
-          AICAD_VALIDATION_EXECUTABLE: .audit-venv/bin/python-cad
-          AICAD_FAILURE_ARTIFACT_DIR: ${{ runner.temp }}/aicad-failure-artifacts
-        run: tools/run-git-opencode-audit "$RUNNER_TEMP/aicad-trigger.json"
+          MAKEITOURS_VALIDATION_EXECUTABLE: .audit-venv/bin/python-cad
+          MAKEITOURS_FAILURE_ARTIFACT_DIR: ${{ runner.temp }}/makeitours-failure-artifacts
+        run: tools/run-git-opencode-audit "$RUNNER_TEMP/makeitours-trigger.json"
 
       - name: Trigger downstream main-branch workflows
         # A commit pushed here with the default GITHUB_TOKEN does not fire
@@ -151,6 +151,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: opencode-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/aicad-failure-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/
+          path: ${{ runner.temp }}/makeitours-failure-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: ignore
           retention-days: 14

@@ -117,13 +117,13 @@ Actions via the manually dispatched `File Template CAD End-to-End` workflow.
 
 Authorized GitHub issues and `/oc` or `/opencode` comments enter one serialized
 OpenCode queue. Each run uses this repository's remote model selection: the
-workflow reads the `AICAD_OPENCODE_MODEL` Actions variable (an exact
+workflow reads the `MAKEITOURS_OPENCODE_MODEL` Actions variable (an exact
 `providerID/modelID` reference such as `opencode-go/glm-5.2`) and passes the
 three candidate provider API-key secrets; the audit runner validates the
 reference and requires the selected provider's credential before OpenCode
 starts, failing fast with a diagnostic artifact rather than falling back to
 another model. An accepted changed run commits its project changes and
-`.aicad/audit/v1/<run-id>/` envelope together. An accepted request that needs no
+`.makeitours/audit/v1/<run-id>/` envelope together. An accepted request that needs no
 project edit creates an audit-only `no_changes` commit. Failed or rejected runs
 do not create or push a commit; their bounded, redacted diagnostic evidence is
 available in the failed GitHub Actions run and its 14-day artifact. This Git

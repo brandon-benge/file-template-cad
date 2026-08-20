@@ -40,7 +40,7 @@ def test_opencode_workflow_owns_a_bounded_audit_transaction():
     runner = (PROJECT_ROOT / "tools" / "run-git-opencode-audit").read_text()
     watchdog = (PROJECT_ROOT / "tools" / "run-with-inactivity-watchdog").read_text()
     ubuntu_lock = (PROJECT_ROOT / "requirements" / "locks" / "dev-ubuntu-x86_64-py313.lock").read_text()
-    schema = PROJECT_ROOT / ".aicad" / "schema" / "git-opencode-run-v1.schema.json"
+    schema = PROJECT_ROOT / ".makeitours" / "schema" / "git-opencode-run-v1.schema.json"
     assert "opencode-ai@latest" in workflow
     assert "Install latest OpenCode" in workflow
     assert "anomalyco/opencode/github@latest" not in workflow
@@ -49,15 +49,15 @@ def test_opencode_workflow_owns_a_bounded_audit_transaction():
     assert "run-with-inactivity-watchdog" in runner
     assert "git commit" in runner
     assert "git push origin HEAD" in runner
-    assert "AICAD_FAILURE_ARTIFACT_DIR" in workflow
-    assert "AICAD_FAILURE_ARTIFACT_DIR" in runner
+    assert "MAKEITOURS_FAILURE_ARTIFACT_DIR" in workflow
+    assert "MAKEITOURS_FAILURE_ARTIFACT_DIR" in runner
     assert "Failure artifact directory must be outside the repository" in runner
     assert "repository history was not changed" in runner
     assert 'if test "$status" = "failed"' in runner
     assert "write_failure_artifact" in runner
     assert "MAX_STDERR_BYTES=1048576" in runner
-    assert "aicad-failure-artifacts" in workflow
-    assert ".aicad/audit/v1/${{ github.run_id }}" not in workflow
+    assert "makeitours-failure-artifacts" in workflow
+    assert ".makeitours/audit/v1/${{ github.run_id }}" not in workflow
     assert "[authentication protected]" in runner
     assert "MAX_EVENTS_BYTES=8388608" in runner
     assert "DEFAULT_OPENCODE_INACTIVITY_SECONDS=600" in runner
@@ -86,16 +86,16 @@ def test_opencode_workflow_permissions_are_bounded():
 def test_opencode_workflow_has_no_hardcoded_model_id():
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
     assert "glm-5.2" not in workflow
-    # The only OPENCODE_MODEL token allowed is the AICAD_OPENCODE_MODEL
+    # The only OPENCODE_MODEL token allowed is the MAKEITOURS_OPENCODE_MODEL
     # repository variable; the old hardcoded OPENCODE_MODEL env key must
     # never reappear.
-    assert re.search(r"(?<!AICAD_)OPENCODE_MODEL:", workflow) is None
-    assert re.search(r"(?<!AICAD_)OPENCODE_MODEL", workflow) is None
+    assert re.search(r"(?<!MAKEITOURS_)OPENCODE_MODEL:", workflow) is None
+    assert re.search(r"(?<!MAKEITOURS_)OPENCODE_MODEL", workflow) is None
 
 
 def test_opencode_workflow_sources_model_from_repository_variable():
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
-    assert "AICAD_OPENCODE_MODEL: ${{ vars.AICAD_OPENCODE_MODEL }}" in workflow
+    assert "MAKEITOURS_OPENCODE_MODEL: ${{ vars.MAKEITOURS_OPENCODE_MODEL }}" in workflow
 
 
 def test_opencode_workflow_passes_candidate_provider_secrets():
@@ -107,7 +107,7 @@ def test_opencode_workflow_passes_candidate_provider_secrets():
 
 def test_opencode_runner_owns_model_selection_validation():
     runner = (PROJECT_ROOT / "tools" / "run-git-opencode-audit").read_text()
-    assert "AICAD_OPENCODE_MODEL" in runner
+    assert "MAKEITOURS_OPENCODE_MODEL" in runner
     assert "validate_model_reference" in runner
     assert "provider-model-diagnostic.json" in runner
     assert "credential_presence" in runner
@@ -126,7 +126,7 @@ def test_sister_repository_contract_parity():
         (
             PROJECT_ROOT.parent / name
             for name in sibling_names
-            if (PROJECT_ROOT.parent / name / ".aicad" / "schema" / "git-opencode-run-v1.schema.json").is_file()
+            if (PROJECT_ROOT.parent / name / ".makeitours" / "schema" / "git-opencode-run-v1.schema.json").is_file()
         ),
         None,
     )
@@ -136,7 +136,7 @@ def test_sister_repository_contract_parity():
         ".github/workflows/opencode.yml",
         "tools/run-git-opencode-audit",
         "tools/run-with-inactivity-watchdog",
-        ".aicad/schema/git-opencode-run-v1.schema.json",
+        ".makeitours/schema/git-opencode-run-v1.schema.json",
         "tests/test_git_opencode_audit.py",
         ".github/workflows/rebuild.yml",
         "tools/install-selected-python-cad-tools",
@@ -295,8 +295,8 @@ def test_rebuild_yml_is_manual_dispatch_without_inputs():
 
 def test_rebuild_yml_reads_selected_version_variable():
     text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "AICAD_PYTHON_CAD_TOOLS_VERSION" in text
-    assert "vars.AICAD_PYTHON_CAD_TOOLS_VERSION" in text
+    assert "MAKEITOURS_PYTHON_CAD_TOOLS_VERSION" in text
+    assert "vars.MAKEITOURS_PYTHON_CAD_TOOLS_VERSION" in text
     assert "install-selected-python-cad-tools" in text
 
 
@@ -353,7 +353,7 @@ def test_rebuild_yml_derives_base_path_from_repository_name():
 
 def test_rebuild_yml_tags_deployed_version():
     text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "aicad-deploy-" in text
+    assert "makeitours-deploy-" in text
     assert "git tag" in text
     assert "git push origin" in text
     assert "refs/tags/" in text

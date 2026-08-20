@@ -13,7 +13,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RUNNER = PROJECT_ROOT / "tools" / "install-selected-python-cad-tools"
-VERSION_VAR = "AICAD_TEST_CAD_TOOLS_VERSION"
+VERSION_VAR = "MAKEITOURS_TEST_CAD_TOOLS_VERSION"
 
 LOCK_TEXT = """\
 build123d==0.11.1 \\

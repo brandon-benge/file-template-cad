@@ -11,9 +11,9 @@ Streams the child's stdout/stderr live while also writing redacted, size-
 bounded copies to disk for the audit trail. The child is killed (its whole
 process group) if it produces no output for <inactivity_seconds>; exit code
 124 signals that timeout, mirroring GNU coreutils `timeout`. Reads its
-tuning knobs from env vars set by the caller: AICAD_SECRET_ENV_NAMES,
-AICAD_EVENTS_LIMIT, AICAD_EVENT_LINE_LIMIT, AICAD_STDERR_LIMIT,
-AICAD_EVENTS_FILE, AICAD_EVENTS_STATS, AICAD_STDERR_FILE, AICAD_STDERR_STATS.
+tuning knobs from env vars set by the caller: MAKEITOURS_SECRET_ENV_NAMES,
+MAKEITOURS_EVENTS_LIMIT, MAKEITOURS_EVENT_LINE_LIMIT, MAKEITOURS_STDERR_LIMIT,
+MAKEITOURS_EVENTS_FILE, MAKEITOURS_EVENTS_STATS, MAKEITOURS_STDERR_FILE, MAKEITOURS_STDERR_STATS.
 """
 
 from __future__ import annotations
@@ -31,20 +31,20 @@ from pathlib import Path
 def main() -> int:
     limit = int(sys.argv[1])
     command = sys.argv[2:]
-    secret_env_names = os.environ.get("AICAD_SECRET_ENV_NAMES", "").split()
+    secret_env_names = os.environ.get("MAKEITOURS_SECRET_ENV_NAMES", "").split()
     secrets = [
         value
         for name in secret_env_names
         for value in [os.environ.get(name, "")]
         if value
     ]
-    events_limit = int(os.environ["AICAD_EVENTS_LIMIT"])
-    event_line_limit = int(os.environ["AICAD_EVENT_LINE_LIMIT"])
-    stderr_limit = int(os.environ["AICAD_STDERR_LIMIT"])
-    events_path = Path(os.environ["AICAD_EVENTS_FILE"])
-    events_stats_path = Path(os.environ["AICAD_EVENTS_STATS"])
-    stderr_path = Path(os.environ["AICAD_STDERR_FILE"])
-    stderr_stats_path = Path(os.environ["AICAD_STDERR_STATS"])
+    events_limit = int(os.environ["MAKEITOURS_EVENTS_LIMIT"])
+    event_line_limit = int(os.environ["MAKEITOURS_EVENT_LINE_LIMIT"])
+    stderr_limit = int(os.environ["MAKEITOURS_STDERR_LIMIT"])
+    events_path = Path(os.environ["MAKEITOURS_EVENTS_FILE"])
+    events_stats_path = Path(os.environ["MAKEITOURS_EVENTS_STATS"])
+    stderr_path = Path(os.environ["MAKEITOURS_STDERR_FILE"])
+    stderr_stats_path = Path(os.environ["MAKEITOURS_STDERR_STATS"])
 
     event_total = 0
     event_retained = 0

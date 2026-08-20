@@ -3,7 +3,7 @@
 
 Invoked by .github/workflows/rebuild.yml (manual workflow_dispatch): once in
 the `rebuild-and-deploy` job to install the version named by the
-AICAD_PYTHON_CAD_TOOLS_VERSION repository variable before building and
+MAKEITOURS_PYTHON_CAD_TOOLS_VERSION repository variable before building and
 deploying the site, and again in the `update-lock` job (with `--output`) to
 reconcile every requirements/locks/dev-*.lock file with that same version
 after a successful deploy. Also exercised directly by tests/test_version_install.py.
@@ -11,7 +11,7 @@ after a successful deploy. Also exercised directly by tests/test_version_install
 Reads the selected version from an environment variable (default
 
 Reads the selected version from an environment variable (default
-``AICAD_PYTHON_CAD_TOOLS_VERSION``). When the variable is unset or empty, the
+``MAKEITOURS_PYTHON_CAD_TOOLS_VERSION``). When the variable is unset or empty, the
 committed requirements lock is installed verbatim. When set, the version is
 validated against the project's declared ``python-cad-tools`` specifier and
 PyPI, only the ``python-cad-tools==<old>`` pin block is replaced with the
@@ -45,7 +45,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-DEFAULT_VERSION_VAR = "AICAD_PYTHON_CAD_TOOLS_VERSION"
+DEFAULT_VERSION_VAR = "MAKEITOURS_PYTHON_CAD_TOOLS_VERSION"
 DEFAULT_PYPI_JSON_BASE = "https://pypi.org"
 PIN_LINE_RE = re.compile(
     r"^python-cad-tools==[^\s]+(?:\s*\\)?\n"

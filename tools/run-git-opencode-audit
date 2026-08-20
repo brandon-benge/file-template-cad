@@ -9,18 +9,18 @@
 # This script drives the whole transaction: validates the selected
 # provider/model, runs `opencode` (via tools/run-with-inactivity-watchdog for
 # bounded, redacted, inactivity-limited capture), validates the result,
-# writes a schema'd audit run under .aicad/audit/v1/<run_id>/, and commits and
+# writes a schema'd audit run under .makeitours/audit/v1/<run_id>/, and commits and
 # pushes on success. On any failure it leaves repository history untouched
-# and instead writes redacted evidence to AICAD_FAILURE_ARTIFACT_DIR for the
+# and instead writes redacted evidence to MAKEITOURS_FAILURE_ARTIFACT_DIR for the
 # workflow to upload. Not intended to be run outside that workflow.
 set -Eeuo pipefail
 
 readonly TRIGGER_FILE="${1:?Usage: $0 <trigger.json>}"
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly MODEL_REFERENCE="${AICAD_OPENCODE_MODEL:-}"
+readonly MODEL_REFERENCE="${MAKEITOURS_OPENCODE_MODEL:-}"
 readonly AGENT="${OPENCODE_AGENT:?OPENCODE_AGENT is required}"
-readonly VALIDATOR="${AICAD_VALIDATION_EXECUTABLE:?AICAD_VALIDATION_EXECUTABLE is required}"
-readonly FAILURE_ARTIFACT_ROOT="${AICAD_FAILURE_ARTIFACT_DIR:?AICAD_FAILURE_ARTIFACT_DIR is required}"
+readonly VALIDATOR="${MAKEITOURS_VALIDATION_EXECUTABLE:?MAKEITOURS_VALIDATION_EXECUTABLE is required}"
+readonly FAILURE_ARTIFACT_ROOT="${MAKEITOURS_FAILURE_ARTIFACT_DIR:?MAKEITOURS_FAILURE_ARTIFACT_DIR is required}"
 readonly MAX_EVENTS_BYTES=8388608
 readonly MAX_EVENT_LINE_BYTES=262144
 readonly MAX_STDERR_BYTES=1048576
@@ -29,18 +29,18 @@ readonly MAX_MODEL_CATALOG_BYTES=1048576
 readonly DEFAULT_OPENCODE_INACTIVITY_SECONDS=600
 readonly PROVIDER_SECRET_ENV_NAMES="OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GOOGLE_API_KEY OPENROUTER_API_KEY GROQ_API_KEY XAI_API_KEY DEEPINFRA_API_KEY MISTRAL_API_KEY GITHUB_TOKEN"
 
-OPENCODE_INACTIVITY_SECONDS="${AICAD_OPENCODE_INACTIVITY_SECONDS:-$DEFAULT_OPENCODE_INACTIVITY_SECONDS}"
+OPENCODE_INACTIVITY_SECONDS="${MAKEITOURS_OPENCODE_INACTIVITY_SECONDS:-$DEFAULT_OPENCODE_INACTIVITY_SECONDS}"
 case "$OPENCODE_INACTIVITY_SECONDS" in
-  ""|*[!0-9]*) echo "AICAD_OPENCODE_INACTIVITY_SECONDS must be a positive integer" >&2; exit 64 ;;
+  ""|*[!0-9]*) echo "MAKEITOURS_OPENCODE_INACTIVITY_SECONDS must be a positive integer" >&2; exit 64 ;;
 esac
 test "$OPENCODE_INACTIVITY_SECONDS" -gt 0 || {
-  echo "AICAD_OPENCODE_INACTIVITY_SECONDS must be a positive integer" >&2
+  echo "MAKEITOURS_OPENCODE_INACTIVITY_SECONDS must be a positive integer" >&2
   exit 64
 }
 readonly OPENCODE_INACTIVITY_SECONDS
 
 # The fixed provider -> credential environment-variable table is shared with
-# the AI CAD app and asserted by the workflow-policy and app tests.
+# the MakeItOurs app and asserted by the workflow-policy and app tests.
 readonly OPENCODE_ZEN_ENV=OPENCODE_API_KEY
 readonly OPENCODE_GO_ENV=OPENCODE_API_KEY
 readonly OPENAI_ENV=OPENAI_API_KEY
@@ -52,8 +52,8 @@ readonly XAI_ENV=XAI_API_KEY
 readonly DEEPINFRA_ENV=DEEPINFRA_API_KEY
 readonly MISTRAL_ENV=MISTRAL_API_KEY
 
-export AICAD_SECRET_ENV_NAMES="$PROVIDER_SECRET_ENV_NAMES"
-export AICAD_MAX_MODEL_CATALOG_BYTES="$MAX_MODEL_CATALOG_BYTES"
+export MAKEITOURS_SECRET_ENV_NAMES="$PROVIDER_SECRET_ENV_NAMES"
+export MAKEITOURS_MAX_MODEL_CATALOG_BYTES="$MAX_MODEL_CATALOG_BYTES"
 
 # Validate the repository-scoped provider/model reference before OpenCode runs.
 # The reference is required but never falls back to a default model. Sets the
@@ -64,26 +64,26 @@ validate_model_reference() {
   provider_id=""
   model_id=""
   if test -z "$reference"; then
-    model_parse_error="AICAD_OPENCODE_MODEL is not set; configure the repository variable"
+    model_parse_error="MAKEITOURS_OPENCODE_MODEL is not set; configure the repository variable"
     return 1
   fi
   if test "$(printf '%s' "$reference" | wc -c)" -gt "$MAX_MODEL_REFERENCE_BYTES"; then
-    model_parse_error="AICAD_OPENCODE_MODEL exceeds $MAX_MODEL_REFERENCE_BYTES bytes"
+    model_parse_error="MAKEITOURS_OPENCODE_MODEL exceeds $MAX_MODEL_REFERENCE_BYTES bytes"
     return 1
   fi
   if test "$(printf '%s' "$reference" | tr -cd '/')" != "/"; then
-    model_parse_error="AICAD_OPENCODE_MODEL must be exactly providerID/modelID with one slash"
+    model_parse_error="MAKEITOURS_OPENCODE_MODEL must be exactly providerID/modelID with one slash"
     return 1
   fi
   case "$reference" in
     *[[:space:][:cntrl:]]*)
-      model_parse_error="AICAD_OPENCODE_MODEL must not contain whitespace or control characters"
+      model_parse_error="MAKEITOURS_OPENCODE_MODEL must not contain whitespace or control characters"
       return 1 ;;
   esac
   local provider="${reference%%/*}"
   local model="${reference#*/}"
   if test -z "$provider" || test -z "$model"; then
-    model_parse_error="AICAD_OPENCODE_MODEL provider and model ids must both be non-empty"
+    model_parse_error="MAKEITOURS_OPENCODE_MODEL provider and model ids must both be non-empty"
     return 1
   fi
   local env_name=""
@@ -138,14 +138,14 @@ write_diagnostic_dump() {
   python3 - "$TEMP_ROOT/model-catalog.raw" "$TEMP_ROOT/model-catalog.txt" "$TEMP_ROOT/model-catalog-stats.json" <<'PY'
 import hashlib, json, os, sys
 source, destination, stats_path = sys.argv[1:]
-secret_env_names = os.environ.get("AICAD_SECRET_ENV_NAMES", "").split()
+secret_env_names = os.environ.get("MAKEITOURS_SECRET_ENV_NAMES", "").split()
 secrets = [value for name in secret_env_names for value in [os.environ.get(name, "")] if value]
 raw = open(source, "rb").read()
 text = raw.decode("utf-8", "replace")
 for secret in secrets:
     text = text.replace(secret, "[authentication protected]")
 encoded = text.encode("utf-8")
-limit = int(os.environ.get("AICAD_MAX_MODEL_CATALOG_BYTES", "1048576"))
+limit = int(os.environ.get("MAKEITOURS_MAX_MODEL_CATALOG_BYTES", "1048576"))
 truncated = len(encoded) > limit
 retained = encoded[:limit] if truncated else encoded
 open(destination, "wb").write(retained)
@@ -243,13 +243,13 @@ case "$GITHUB_RUN:$GITHUB_ATTEMPT" in
   *[!0-9:]*|:*|*:) echo "Invalid GitHub run identity" >&2; exit 64 ;;
 esac
 readonly RUN_ID="${GITHUB_RUN}-${GITHUB_ATTEMPT}"
-readonly RUN_DIR=".aicad/audit/v1/${RUN_ID}"
+readonly RUN_DIR=".makeitours/audit/v1/${RUN_ID}"
 readonly FAILURE_RUN_DIR="$ARTIFACT_ROOT/$RUN_ID"
 test ! -e "$RUN_DIR" || { echo "Audit run already exists: $RUN_ID" >&2; exit 65; }
 test ! -e "$FAILURE_RUN_DIR" || { echo "Failure artifact already exists: $RUN_ID" >&2; exit 65; }
 
 readonly START_SHA="$(git rev-parse HEAD)"
-readonly TEMP_ROOT="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/aicad-audit.XXXXXX")"
+readonly TEMP_ROOT="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/makeitours-audit.XXXXXX")"
 readonly TEMP_RUN="$TEMP_ROOT/$RUN_ID"
 mkdir -p "$TEMP_RUN"
 cp "$TRIGGER_FILE" "$TEMP_ROOT/trigger.json"
@@ -257,7 +257,7 @@ cp "$TRIGGER_FILE" "$TEMP_ROOT/trigger.json"
 python3 - "$TRIGGER_FILE" "$TEMP_ROOT/safe-trigger.json" <<'PY'
 import json, os, sys
 source, destination = sys.argv[1:]
-secret_env_names = os.environ.get("AICAD_SECRET_ENV_NAMES", "").split()
+secret_env_names = os.environ.get("MAKEITOURS_SECRET_ENV_NAMES", "").split()
 secrets = [value for name in secret_env_names for value in [os.environ.get(name, "")] if value]
 value = json.load(open(source))
 def protect(item):
@@ -306,16 +306,16 @@ fi
 prompt="$(printf '%s\n\n%s\n\n%s' \
   "Work on GitHub issue #$issue_number: $issue_title" \
   "$request_text" \
-  'Follow repository governance. Make only requested source changes and run relevant checks. Finish all requested geometry, metadata, material, and user-facing-name edits before starting final verification. After final verification succeeds, do not make another source edit unless a concrete check or requested acceptance criterion failed. Run every long-running test, validation, build, and verification command as a separate tool call. Do not chain commands with &&, ;, or pipes, and do not start these commands in parallel or in the background. Wait for each command to finish before starting the next so progress and failures remain observable. Do not run git, commit, push, or edit .aicad/audit; the workflow owns validation and Git persistence.')"
+  'Follow repository governance. Make only requested source changes and run relevant checks. Finish all requested geometry, metadata, material, and user-facing-name edits before starting final verification. After final verification succeeds, do not make another source edit unless a concrete check or requested acceptance criterion failed. Run every long-running test, validation, build, and verification command as a separate tool call. Do not chain commands with &&, ;, or pipes, and do not start these commands in parallel or in the background. Wait for each command to finish before starting the next so progress and failures remain observable. Do not run git, commit, push, or edit .makeitours/audit; the workflow owns validation and Git persistence.')"
 
 set +e
-export AICAD_EVENTS_LIMIT="$MAX_EVENTS_BYTES"
-export AICAD_EVENT_LINE_LIMIT="$MAX_EVENT_LINE_BYTES"
-export AICAD_EVENTS_FILE="$TEMP_RUN/events.jsonl"
-export AICAD_EVENTS_STATS="$TEMP_ROOT/events-stats.json"
-export AICAD_STDERR_LIMIT="$MAX_STDERR_BYTES"
-export AICAD_STDERR_FILE="$TEMP_ROOT/stderr.log"
-export AICAD_STDERR_STATS="$TEMP_ROOT/stderr-stats.json"
+export MAKEITOURS_EVENTS_LIMIT="$MAX_EVENTS_BYTES"
+export MAKEITOURS_EVENT_LINE_LIMIT="$MAX_EVENT_LINE_BYTES"
+export MAKEITOURS_EVENTS_FILE="$TEMP_RUN/events.jsonl"
+export MAKEITOURS_EVENTS_STATS="$TEMP_ROOT/events-stats.json"
+export MAKEITOURS_STDERR_LIMIT="$MAX_STDERR_BYTES"
+export MAKEITOURS_STDERR_FILE="$TEMP_ROOT/stderr.log"
+export MAKEITOURS_STDERR_STATS="$TEMP_ROOT/stderr-stats.json"
 # run-with-inactivity-watchdog itself redacts exact known credentials,
 # represents oversized lines with a valid JSON marker, and stops the
 # retained file at the V1 budget while stdout keeps draining; see that
@@ -359,7 +359,7 @@ for item in raw:
     if not item: continue
     text = item.decode("utf-8", "replace")
     path = text[3:] if len(text) > 3 else text
-    if path and not path.startswith((".audit-venv/", ".aicad/audit/")):
+    if path and not path.startswith((".audit-venv/", ".makeitours/audit/")):
         paths.append(path)
 json.dump(sorted(set(paths))[:2000], sys.stdout)
 ' > "$TEMP_ROOT/changed-paths.json"

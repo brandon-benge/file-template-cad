@@ -15,7 +15,7 @@
     "issue": {
       "number": 2,
       "title": "Test 1.3",
-      "body": "## Request\n\nTurn the cube into a rectangle \n\n## Acceptance criteria\n\n- Complete the requested change and verify the project builds.\n\n## Publishing\n\nWait for approval after successful build evidence is recorded.\n\n<!-- ai-cad-request:v1 id=B7ED8830-1521-40F8-A859-2F0DAB99A2C5 sha256=3d9b59cda3cab383dbd59fe87bf980a72fb4d390707241566d8ad10301a57dae -->"
+      "body": "## Request\n\nTurn the cube into a rectangle \n\n## Acceptance criteria\n\n- Complete the requested change and verify the project builds.\n\n## Publishing\n\nWait for approval after successful build evidence is recorded.\n\n<!-- makeitours-request:v1 id=B7ED8830-1521-40F8-A859-2F0DAB99A2C5 sha256=3d9b59cda3cab383dbd59fe87bf980a72fb4d390707241566d8ad10301a57dae -->"
     },
     "comment": null
   },
