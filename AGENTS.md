@@ -64,7 +64,7 @@ needs Tier 1 verification.
 
 | Agent | Responsibility | May modify |
 |---|---|---|
-| `file-design-maintainer` | Implement template-design changes | `config.py`, `model.py`, `drawing_annotations.py` |
+| `file-design-maintainer` | Implement template-design changes | `config.py`, `model.py`, `models/`, `drawing_annotations.py` |
 | `file-artifact-reviewer` | Review generated outputs and report design-quality findings | Nothing |
 | `cad-compatibility-verifier` | Verify the installed PyPI package, environment, commands, and compatibility | Nothing |
 
@@ -232,9 +232,9 @@ snapshots that only a human updates. For a pure design-value edit (no change
 to `tests/`), run only static analysis and project validation:
 
 ```text
-ruff check config.py model.py drawing_annotations.py tests/
-ruff format --check config.py model.py drawing_annotations.py tests/
-mypy config.py model.py drawing_annotations.py tests/
+ruff check config.py model.py models/ drawing_annotations.py tests/
+ruff format --check config.py model.py models/ drawing_annotations.py tests/
+mypy config.py model.py models/ drawing_annotations.py tests/
 python-cad validate --project-root .
 ```
 

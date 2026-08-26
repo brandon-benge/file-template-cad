@@ -365,7 +365,7 @@ json.dump(sorted(set(paths))[:2000], sys.stdout)
 ' > "$TEMP_ROOT/changed-paths.json"
 
 if test "$status" = "completed" && ! jq -e \
-  'all(. == "config.py" or . == "model.py" or . == "drawing_annotations.py")' \
+  'all(. == "config.py" or . == "model.py" or . == "drawing_annotations.py" or (startswith("models/") and endswith(".py")))' \
   "$TEMP_ROOT/changed-paths.json" >/dev/null; then
   status="failed"
   failure_stage="policy"

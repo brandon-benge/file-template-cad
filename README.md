@@ -1,7 +1,8 @@
 # Benge Property CAD
 
 Parametric CAD model, built with the published
-`python-cad-tools` package. The editable design lives in `config.py`, `model.py`,
+`python-cad-tools` package. The editable design lives in `config.py`, the
+composition entry point `model.py`, focused geometry modules under `models/`,
 and `drawing_annotations.py`; tests live in `tests/`.
 
 A headless build produces STEP, IFC4, GLB, conceptual SVG/DXF/PDF drawings,
@@ -86,7 +87,7 @@ source instead.
 ## Edit the design
 
 - Change dimensions and materials in `config.py`.
-- Compose shared geometry and metadata in `model.py`.
+- Compose the single model in `model.py`; place focused geometry and metadata in `models/`.
 - Maintain drawing labels and dimensions in `drawing_annotations.py`.
 - Preserve stable semantic IDs, including existing `complex.*` IDs.
 - Update geometry, metadata, and annotations together; keep source syntactically valid. Design-input validation tests have been removed and are not required. Agents must not update model-specific test assertions (IFC mappings, element IDs, annotation content, dimensions, positions, materials) in any test file.
@@ -96,9 +97,9 @@ Use only documented public APIs from the installed `python-cad-tools` package.
 ## Development checks
 
 ```bash
-.venv/bin/ruff check config.py model.py drawing_annotations.py tests/
-.venv/bin/ruff format --check config.py model.py drawing_annotations.py tests/
-.venv/bin/mypy config.py model.py drawing_annotations.py tests/
+.venv/bin/ruff check config.py model.py models/ drawing_annotations.py tests/
+.venv/bin/ruff format --check config.py model.py models/ drawing_annotations.py tests/
+.venv/bin/mypy config.py model.py models/ drawing_annotations.py tests/
 .venv/bin/python -m pytest -q tests/test_workflow_policy.py
 ```
 

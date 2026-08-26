@@ -21,6 +21,7 @@ Edit only:
 
 - `config.py`
 - `model.py`
+- `models/*.py`
 - `drawing_annotations.py`
 - `tests/`
 

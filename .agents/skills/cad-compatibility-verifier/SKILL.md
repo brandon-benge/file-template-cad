@@ -63,9 +63,9 @@ Run only commands supported by the current project.
 Typical basic sequence:
 
 ```text
-ruff check config.py model.py drawing_annotations.py tests/
-ruff format --check config.py model.py drawing_annotations.py tests/
-mypy config.py model.py drawing_annotations.py tests/
+ruff check config.py model.py models/ drawing_annotations.py tests/
+ruff format --check config.py model.py models/ drawing_annotations.py tests/
+mypy config.py model.py models/ drawing_annotations.py tests/
 python -m pytest -q tests/test_workflow_policy.py
 ```
 

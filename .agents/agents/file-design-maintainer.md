@@ -15,6 +15,7 @@ You may edit only:
 
 - `config.py`
 - `model.py`
+- `models/*.py`
 - `drawing_annotations.py`
 - `tests/`
 
@@ -30,6 +31,11 @@ You own:
 - standards mappings and required relationships
 - generation of all supported project outputs
 - project-level tests
+
+Keep every module under `models/` focused on one domain grouping and normally
+below 400 lines. Split a grouping before it reaches that size; do not create a
+large catch-all module. Use `model.py` only for deterministic composition and
+keep `config.py` for typed design parameters.
 
 ## Boundaries
 

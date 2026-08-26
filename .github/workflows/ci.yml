@@ -92,11 +92,11 @@ jobs:
           pip install --require-hashes -r requirements/locks/dev-ubuntu-x86_64-py313.lock
           pip check
       - name: Ruff lint
-        run: ruff check config.py model.py drawing_annotations.py tests/
+        run: ruff check config.py model.py models/ drawing_annotations.py tests/
       - name: Ruff format
-        run: ruff format --check config.py model.py drawing_annotations.py tests/
+        run: ruff format --check config.py model.py models/ drawing_annotations.py tests/
       - name: Mypy
-        run: mypy config.py model.py drawing_annotations.py tests/
+        run: mypy config.py model.py models/ drawing_annotations.py tests/
 
   boundary-governance:
     runs-on: ubuntu-24.04
