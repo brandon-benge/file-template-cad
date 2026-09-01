@@ -19,7 +19,7 @@ tools/
 tools/*
 !tools/run-git-opencode-audit
 !tools/run-with-inactivity-watchdog
-!tools/install-selected-python-cad-tools
+!tools/reconcile-infrastructure
 viewer/
 backup/
 .back_agents/

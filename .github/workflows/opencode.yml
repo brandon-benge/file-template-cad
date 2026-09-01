@@ -112,10 +112,23 @@ jobs:
           git config user.name "opencode[bot]"
           git config user.email "opencode[bot]@users.noreply.github.com"
 
+      - name: Fetch file-template-cad gold standard
+        shell: bash
+        # A shallow, anonymous clone of the public template into RUNNER_TEMP
+        # (outside this repo's working tree, so it never shows up in the
+        # audit runner's git status). run-git-opencode-audit reconciles this
+        # repo's infrastructure against it before OpenCode runs. Live, not a
+        # vendored snapshot: this is developer-controlled CI, not the
+        # App-Store binary, so none of that Guideline 2.5.2 reasoning applies.
+        run: |
+          git clone --depth 1 https://github.com/brandon-benge/file-template-cad.git \
+            "$RUNNER_TEMP/file-template-cad-gold"
+
       - name: Run OpenCode with repository audit
         shell: bash
         env:
           MAKEITOURS_OPENCODE_MODEL: ${{ vars.MAKEITOURS_OPENCODE_MODEL }}
+          MAKEITOURS_CAD_TEMPLATE_CHECKOUT: ${{ runner.temp }}/file-template-cad-gold
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

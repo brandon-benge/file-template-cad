@@ -18,6 +18,7 @@ RUNNER = PROJECT_ROOT / "tools" / "run-git-opencode-audit"
 class Transaction(TypedDict):
     checkout: Path
     remote: Path
+    template: Path
     artifacts: Path
     trigger: Path
     env: dict[str, str]
@@ -42,6 +43,7 @@ def transaction(tmp_path: Path) -> Transaction:
 
     remote = tmp_path / "origin.git"
     checkout = tmp_path / "checkout"
+    template = tmp_path / "file-template-cad-gold"
     tools = tmp_path / "bin"
     artifacts = tmp_path / "artifacts"
     trigger = tmp_path / "trigger.json"
@@ -49,13 +51,27 @@ def transaction(tmp_path: Path) -> Transaction:
     validator = tools / "validator"
     opencode = tools / "opencode"
 
+    # A minimal file-template-cad "gold standard" the audit runner reconciles
+    # this checkout's infrastructure against before OpenCode runs. Its tracked
+    # infrastructure (pyproject.toml, tracked.txt) matches the checkout below,
+    # so reconciliation is a no-op here and adds no extra commit; the
+    # dedicated reconciliation test seeds real drift on top of this.
+    run("git", "init", "-b", "main", template, cwd=tmp_path)
+    run("git", "config", "user.name", "Template", cwd=template)
+    run("git", "config", "user.email", "template@example.com", cwd=template)
+    (template / "pyproject.toml").write_text("[project]\nname = \"file-template-cad\"\n")
+    (template / "tracked.txt").write_text("original\n")
+    run("git", "add", "-A", cwd=template)
+    run("git", "commit", "-m", "template", cwd=template)
+
     run("git", "init", "--bare", remote, cwd=tmp_path)
     run("git", "init", "-b", "main", checkout, cwd=tmp_path)
     run("git", "config", "user.name", "Test Runner", cwd=checkout)
     run("git", "config", "user.email", "runner@example.com", cwd=checkout)
     (checkout / "tracked.txt").write_text("original\n")
+    (checkout / "pyproject.toml").write_text("[project]\nname = \"file-template-cad\"\n")
     (checkout / "config.py").write_text("original = True\n")
-    run("git", "add", "tracked.txt", "config.py", cwd=checkout)
+    run("git", "add", "tracked.txt", "pyproject.toml", "config.py", cwd=checkout)
     run("git", "commit", "-m", "initial", cwd=checkout)
     run("git", "remote", "add", "origin", remote, cwd=checkout)
     run("git", "push", "-u", "origin", "main", cwd=checkout)
@@ -128,6 +144,7 @@ exit "${MAKEITOURS_TEST_VALIDATION_EXIT:-0}"
             "OPENCODE_API_KEY": "secret-test-value",
             "MAKEITOURS_VALIDATION_EXECUTABLE": str(validator),
             "MAKEITOURS_FAILURE_ARTIFACT_DIR": str(artifacts),
+            "MAKEITOURS_CAD_TEMPLATE_CHECKOUT": str(template),
             "RUNNER_TEMP": str(tmp_path),
             "MAKEITOURS_TEST_CALLED_FILE": str(called),
         }
@@ -136,6 +153,7 @@ exit "${MAKEITOURS_TEST_VALIDATION_EXIT:-0}"
     return {
         "checkout": checkout,
         "remote": remote,
+        "template": template,
         "artifacts": artifacts,
         "trigger": trigger,
         "env": env,
@@ -528,3 +546,36 @@ def test_diagnostic_dump_tolerates_failing_opencode(transaction: Transaction):
     assert "opencode models failed" in dump["model_catalog"]["text"]
     assert dump["model_catalog"]["retained_bytes"] == len(dump["model_catalog"]["text"].encode("utf-8"))
     assert len(dump["model_catalog"]["sha256"]) == 64
+
+
+def test_infrastructure_is_reconciled_before_opencode_runs(transaction: Transaction):
+    checkout = transaction["checkout"]
+    template = transaction["template"]
+
+    # Drift the checkout's infrastructure away from the template, add a stray
+    # tracked infrastructure file the template doesn't have, and hand-edit a
+    # customer-owned file.
+    (checkout / "tracked.txt").write_text("HAND EDITED\n")
+    (checkout / "stray.cfg").write_text("customer added\n")
+    (checkout / "config.py").write_text("customer = 'keep me'\n")
+    run("git", "add", "-A", cwd=checkout)
+    run("git", "commit", "-m", "local drift", cwd=checkout)
+    run("git", "push", "origin", "main", cwd=checkout)
+    drifted_head = run("git", "rev-parse", "HEAD", cwd=checkout).stdout.strip()
+
+    result = execute(transaction, MAKEITOURS_TEST_OPENCODE_MODE="nochange")
+    assert result.returncode == 0, result.stderr
+
+    # Infrastructure now matches the template again; the stray file is gone.
+    assert (checkout / "tracked.txt").read_text() == (template / "tracked.txt").read_text()
+    assert not (checkout / "stray.cfg").exists()
+    # The customer-owned file is never touched by reconciliation.
+    assert (checkout / "config.py").read_text() == "customer = 'keep me'\n"
+
+    # Reconciliation landed as its own commit, and everything was pushed.
+    log_subjects = run(
+        "git", "log", "--format=%s", f"{drifted_head}..HEAD", cwd=checkout
+    ).stdout.splitlines()
+    assert "chore: reconcile infrastructure with file-template-cad" in log_subjects
+    local, remote = heads(transaction)
+    assert local == remote

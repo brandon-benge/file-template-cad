@@ -295,10 +295,16 @@ not run E2E tests. A minor or major change, or a user request for a full
 upgrade, requires E2E testing. E2E testing is also available on demand through
 the manually dispatched `File Template CAD End-to-End` GitHub Actions workflow.
 
-Dependency-version selection is a repository-settings action performed through
-the MakeItOurs app (`MAKEITOURS_PYTHON_CAD_TOOLS_VERSION` variable and the on-demand
-rebuild workflow); it is not a prompt-driven agent task. No agent edits
-`pyproject.toml` or dependency locks to perform a version upgrade.
+There is no dependency-version selection. `pyproject.toml`, the
+`requirements/locks/*.lock` files, `tools/`, CI config, and every other file
+outside the four customer-owned CAD authoring paths (`config.py`, `model.py`,
+`drawing_annotations.py`, `models/**/*.py`) are infrastructure: reconciled
+automatically against `file-template-cad`'s current committed content on
+every Git-triggered run (`tools/run-git-opencode-audit` invokes
+`tools/reconcile-infrastructure` before OpenCode's edit loop), and against the
+MakeItOurs app's vendored snapshot on every Mac build. No agent edits
+`pyproject.toml` or dependency locks; advancing `python-cad-tools` means
+updating `file-template-cad` itself.
 
 Do not invent unsupported commands or silently bypass failed checks. Report
 environment-specific skipped checks and the reason.

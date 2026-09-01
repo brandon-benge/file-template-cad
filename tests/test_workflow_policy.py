@@ -135,12 +135,10 @@ def test_sister_repository_contract_parity():
     shared = [
         ".github/workflows/opencode.yml",
         "tools/run-git-opencode-audit",
+        "tools/reconcile-infrastructure",
         "tools/run-with-inactivity-watchdog",
         ".makeitours/schema/git-opencode-run-v1.schema.json",
         "tests/test_git_opencode_audit.py",
-        ".github/workflows/rebuild.yml",
-        "tools/install-selected-python-cad-tools",
-        "tests/test_version_install.py",
     ]
     for relative in shared:
         assert (PROJECT_ROOT / relative).read_bytes() == (sibling / relative).read_bytes(), (
@@ -280,102 +278,48 @@ def test_readme_agent_governance_references_the_tier_contract():
     assert "Tier 1" in section and "Tier 2" in section
 
 
-def test_rebuild_yml_exists():
-    assert (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").is_file()
+def test_python_cad_tools_version_selection_is_fully_removed():
+    """The python-cad-tools version-selection feature -- rebuild.yml, its
+    install-selected-python-cad-tools tool, and their test -- is gone, and no
+    workflow reads the MAKEITOURS_PYTHON_CAD_TOOLS_VERSION variable anymore."""
+    workflows = PROJECT_ROOT / ".github" / "workflows"
+    assert not (workflows / "rebuild.yml").exists()
+    assert not (PROJECT_ROOT / "tools" / "install-selected-python-cad-tools").exists()
+    assert not (PROJECT_ROOT / "tests" / "test_version_install.py").exists()
+    for workflow in workflows.glob("*.yml"):
+        assert "MAKEITOURS_PYTHON_CAD_TOOLS_VERSION" not in workflow.read_text(), workflow.name
 
 
-def test_rebuild_yml_is_manual_dispatch_without_inputs():
-    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "workflow_dispatch:" in text
-    assert "inputs:" not in text
-    assert "push:" not in text
-    assert "pull_request:" not in text
-    assert "workflow_run:" not in text
+def test_opencode_workflow_reconciles_infrastructure_before_running():
+    """Every triggered run reconciles this repo's infrastructure against
+    file-template-cad's live committed content before OpenCode's edit loop,
+    so a phone-initiated change never leaves infrastructure drifted."""
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "opencode.yml").read_text()
+    runner = (PROJECT_ROOT / "tools" / "run-git-opencode-audit").read_text()
+    reconciler = PROJECT_ROOT / "tools" / "reconcile-infrastructure"
 
+    # The workflow fetches file-template-cad live (a shallow anonymous clone,
+    # outside the repo working tree) and hands its path to the runner.
+    assert "git clone --depth 1 https://github.com/brandon-benge/file-template-cad.git" in workflow
+    assert "MAKEITOURS_CAD_TEMPLATE_CHECKOUT: ${{ runner.temp }}/file-template-cad-gold" in workflow
 
-def test_rebuild_yml_reads_selected_version_variable():
-    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "MAKEITOURS_PYTHON_CAD_TOOLS_VERSION" in text
-    assert "vars.MAKEITOURS_PYTHON_CAD_TOOLS_VERSION" in text
-    assert "install-selected-python-cad-tools" in text
+    # The runner reconciles before it captures START_SHA / runs OpenCode, and
+    # commits the result as its own commit so it never trips the
+    # customer-owned-only policy check on OpenCode's own changes.
+    assert reconciler.is_file()
+    assert 'python3 "$SCRIPT_DIR/reconcile-infrastructure" "$CAD_TEMPLATE_CHECKOUT"' in runner
+    assert "MAKEITOURS_CAD_TEMPLATE_CHECKOUT" in runner
+    reconcile_index = runner.index("reconcile-infrastructure")
+    assert reconcile_index < runner.index('readonly START_SHA=')
+    assert reconcile_index < runner.index("opencode run --format json")
+    assert 'git commit -m "chore: reconcile infrastructure with file-template-cad"' in runner
 
-
-def test_rebuild_yml_has_no_hardcoded_version_or_local_wheel():
-    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "0.1.9" not in text
-    assert "python-cad-tools==" not in text
-    assert "python-cad-tools/dist" not in text
-    assert "test-with-cad-override" not in text
-
-
-def test_rebuild_yml_never_commits_directly_to_main_or_touches_pyproject():
-    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "pip-compile" not in text
-    assert "pyproject.toml" not in text
-    assert "install-selected-python-cad-tools" in text
-    # The only requirements path allowed is the committed dev lock, reconciled
-    # in place by the same tool used for the ephemeral install (never a
-    # temporary --output-file path or a raw shell redirect elsewhere).
-    assert "requirements/locks/dev-ubuntu-x86_64-py313.lock" in text
-    assert "--output-file" not in text
-    assert "> requirements" not in text
-    # A lock update commits to its own branch and goes through a pull
-    # request; the deploy job itself never commits to main.
-    assert 'git checkout -b "$branch"' in text
-    assert "gh pr create" in text
-    assert "--base main" in text
-
-
-def test_rebuild_yml_lock_update_runs_only_after_a_successful_deploy():
-    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "update-lock:" in text
-    update_lock = text.split("update-lock:", 1)[1]
-    assert "needs: rebuild-and-deploy" in update_lock
-    assert "needs.rebuild-and-deploy.result == 'success'" in update_lock
-
-
-def test_rebuild_yml_permissions_least_privilege():
-    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "write-all" not in text
-    assert "contents: write" in text
-    assert "pages: write" in text
-    assert "id-token: write" in text
-    assert "pull-requests: write" in text
-
-
-def test_rebuild_yml_derives_base_path_from_repository_name():
-    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "github.event.repository.name" in text
-    assert "--base-path" in text
-    assert "/file-template-cad/" not in text
-    assert "/benge-property-cad/" not in text
-
-
-def test_rebuild_yml_tags_deployed_version():
-    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    assert "makeitours-deploy-" in text
-    assert "git tag" in text
-    assert "git push origin" in text
-    assert "refs/tags/" in text
-    assert "git rev-parse -q --verify" in text
-
-
-def test_rebuild_yml_reuses_pages_pipeline():
-    text = (PROJECT_ROOT / ".github" / "workflows" / "rebuild.yml").read_text()
-    for command in [
-        "python-cad validate --project-root .",
-        "python-cad clean --project-root .",
-        "python-cad build --project-root .",
-        "python-cad verify --project-root .",
-        "python-cad prepare-site --project-root .",
-    ]:
-        assert command in text
-    for action in [
-        "actions/configure-pages@v5",
-        "actions/upload-pages-artifact@v3",
-        "actions/deploy-pages@v4",
-    ]:
-        assert action in text
+    # The reconciler never touches the four customer-owned paths, generated/,
+    # or the per-repo audit trail.
+    reconciler_text = reconciler.read_text()
+    assert '_CUSTOMER_TOP_LEVEL = {"config.py", "model.py", "drawing_annotations.py"}' in reconciler_text
+    assert 'models/' in reconciler_text
+    assert '".makeitours/audit"' in reconciler_text
 
 
 def test_python_cad_tools_upgrader_agent_retired():

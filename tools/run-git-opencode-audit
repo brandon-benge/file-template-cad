@@ -248,6 +248,30 @@ readonly FAILURE_RUN_DIR="$ARTIFACT_ROOT/$RUN_ID"
 test ! -e "$RUN_DIR" || { echo "Audit run already exists: $RUN_ID" >&2; exit 65; }
 test ! -e "$FAILURE_RUN_DIR" || { echo "Failure artifact already exists: $RUN_ID" >&2; exit 65; }
 
+# Reconcile infrastructure against file-template-cad's current committed content BEFORE
+# anything else touches the tree, so OpenCode's edit loop and the validation below run
+# against an up-to-date template -- and, crucially, so a phone-initiated change to a
+# GitHub-connected project never leaves that repository's infrastructure drifted (the phone
+# has no local build host to reconcile it the way the Mac app does). Committed as its own
+# commit, before START_SHA is captured, so it never trips the customer-owned-only policy
+# check on OpenCode's own changes further down. This is developer-controlled CI, not the
+# sandboxed App-Store binary, so it sources the gold standard live rather than from a
+# vendored snapshot -- see
+# specrepo/requests/2026-09-01-cad-infrastructure-abstraction.md.
+readonly CAD_TEMPLATE_CHECKOUT="${MAKEITOURS_CAD_TEMPLATE_CHECKOUT:?MAKEITOURS_CAD_TEMPLATE_CHECKOUT is required}"
+test -f "$CAD_TEMPLATE_CHECKOUT/pyproject.toml" || {
+  echo "MAKEITOURS_CAD_TEMPLATE_CHECKOUT is not a file-template-cad checkout: $CAD_TEMPLATE_CHECKOUT" >&2
+  exit 69
+}
+if ! python3 "$SCRIPT_DIR/reconcile-infrastructure" "$CAD_TEMPLATE_CHECKOUT"; then
+  echo "Infrastructure reconciliation failed; repository history was not changed" >&2
+  exit 69
+fi
+if ! git diff --quiet -- . ':(exclude).audit-venv' || ! git diff --cached --quiet -- . ':(exclude).audit-venv'; then
+  git add -A -- . ':(exclude).audit-venv'
+  git commit -m "chore: reconcile infrastructure with file-template-cad"
+fi
+
 readonly START_SHA="$(git rev-parse HEAD)"
 readonly TEMP_ROOT="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/makeitours-audit.XXXXXX")"
 readonly TEMP_RUN="$TEMP_ROOT/$RUN_ID"

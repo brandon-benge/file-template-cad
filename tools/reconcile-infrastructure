@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Reconcile this repository's infrastructure files against a file-template-cad checkout.
+
+"Infrastructure" is every tracked file EXCEPT the four customer-owned CAD authoring
+paths (config.py, model.py, drawing_annotations.py, any models/**/*.py) and disposable
+build output (generated/). That boundary is the one defined by
+MakeItOursDomain.CADAuthoringSurface in the makeitours-app repo, mirrored here.
+
+Every infrastructure file that is missing or differs from the template's version is
+overwritten with it; every tracked infrastructure file the template does not have is
+removed. Regular files and symlinks are both handled; the four customer-owned paths and
+generated/ are never touched.
+
+Usage: reconcile-infrastructure <path-to-file-template-cad-checkout>
+
+Run from the repository root. Invoked by tools/run-git-opencode-audit before OpenCode's
+edit loop so the AI works against an up-to-date template. Unlike the makeitours-app Mac
+client (which vendors a snapshot to avoid a Guideline 2.5.2 risk in a sandboxed,
+App-Store-distributed binary), this is developer-controlled CI and reconciles against the
+template's live committed content -- see
+specrepo/requests/2026-09-01-cad-infrastructure-abstraction.md.
+"""
+
+from __future__ import annotations
+
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+
+_CUSTOMER_TOP_LEVEL = {"config.py", "model.py", "drawing_annotations.py"}
+
+
+def _is_customer_owned(relative_path: str) -> bool:
+    if relative_path in _CUSTOMER_TOP_LEVEL:
+        return True
+    return relative_path.startswith("models/") and relative_path.endswith(".py")
+
+
+def _is_infrastructure(relative_path: str) -> bool:
+    if _is_customer_owned(relative_path):
+        return False
+    # Disposable build output, and the per-project Git-triggered audit trail (runtime
+    # history, not template content -- .makeitours/schema/ IS template infrastructure and
+    # stays).
+    for prefix in ("generated", ".makeitours/audit"):
+        if relative_path == prefix or relative_path.startswith(prefix + "/"):
+            return False
+    return True
+
+
+def _tracked_infrastructure(root: pathlib.Path) -> list[str]:
+    result = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z"],
+        capture_output=True,
+        check=True,
+    )
+    return [
+        part.decode("utf-8")
+        for part in result.stdout.split(b"\x00")
+        if part and _is_infrastructure(part.decode("utf-8"))
+    ]
+
+
+def _remove(path: pathlib.Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
+def _copy_from_template(source: pathlib.Path, destination: pathlib.Path) -> bool:
+    """Copy one entry, returning True when the destination actually changed."""
+    if source.is_symlink():
+        target = os.readlink(source)
+        if destination.is_symlink() and os.readlink(destination) == target:
+            return False
+        if os.path.lexists(destination):
+            _remove(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(target, destination)
+        return True
+    if not source.is_file():
+        # A gitlink/submodule or something else this reconciler has no opinion about.
+        return False
+    source_bytes = source.read_bytes()
+    if destination.is_file() and not destination.is_symlink() and destination.read_bytes() == source_bytes:
+        return False
+    if os.path.lexists(destination):
+        _remove(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+    shutil.copymode(source, destination)
+    return True
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2:
+        print(__doc__, file=sys.stderr)
+        return 64
+    template = pathlib.Path(argv[1]).resolve()
+    if not (template / "pyproject.toml").is_file():
+        print(f"Not a file-template-cad checkout: {template}", file=sys.stderr)
+        return 64
+    repo = pathlib.Path.cwd()
+
+    template_infra = _tracked_infrastructure(template)
+    template_set = set(template_infra)
+    changed: list[str] = []
+
+    for relative_path in template_infra:
+        if _copy_from_template(template / relative_path, repo / relative_path):
+            changed.append(relative_path)
+
+    for relative_path in _tracked_infrastructure(repo):
+        if relative_path in template_set:
+            continue
+        target = repo / relative_path
+        if os.path.lexists(target):
+            _remove(target)
+            changed.append(relative_path)
+
+    for relative_path in sorted(changed):
+        print(f"reconciled {relative_path}")
+    print(f"{len(changed)} infrastructure file(s) reconciled")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
