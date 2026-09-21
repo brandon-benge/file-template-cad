@@ -87,13 +87,13 @@ def server_process(session_project, tmp_path_factory):
 # ── 12.8.1 Site preparation ─────────────────────────────────────────────────
 
 
-def test_prepare_site_node_unavailable(copied_project, tmp_path) -> None:
+def test_prepare_site_node_unavailable(copied_project, tmp_path, identity) -> None:
     _build(copied_project)
     assert not (copied_project / "viewer").exists() or not any((copied_project / "viewer").glob("*"))
     assert "node" not in os.environ.get("PATH", "").lower() or True
     dest = tmp_path / "site"
     site = prepare_site(copied_project, dest)
-    assert site.project_id == "file.template"
+    assert site.project_id == identity.model_id
     assert site.file_count > 0
     assert len(site.design_build_hash) == 64
 
@@ -168,16 +168,16 @@ def test_download_manifest(server_process) -> None:
     assert manifest["schema_id"] == "urn:python-cad-tools:schema:download-manifest:2"
 
 
-def test_glb_artifact(server_process) -> None:
+def test_glb_artifact(server_process, identity) -> None:
     proc, url = server_process
-    resp = requests.get(f"{url}artifacts/glb/FileTemplate.glb", timeout=10)
+    resp = requests.get(f"{url}artifacts/glb/{identity.stem}.glb", timeout=10)
     assert resp.status_code == 200
     assert resp.headers.get("content-type") in ("model/gltf-binary", "application/octet-stream", "")
 
 
-def test_drawing_svg_artifact(server_process) -> None:
+def test_drawing_svg_artifact(server_process, identity) -> None:
     proc, url = server_process
-    resp = requests.get(f"{url}artifacts/drawings/svg/FileTemplate_plan.svg", timeout=10)
+    resp = requests.get(f"{url}artifacts/drawings/svg/{identity.stem}_plan.svg", timeout=10)
     assert resp.status_code == 200
     assert "image/svg+xml" in resp.headers.get("content-type", "")
 
