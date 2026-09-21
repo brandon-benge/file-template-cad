@@ -25,16 +25,16 @@ def cli_built_project(tmp_path_factory: pytest.TempPathFactory, repo_root: Path)
     return dest
 
 
-def test_cli_build_from_root(cli_built_project) -> None:
+def test_cli_build_from_root(cli_built_project, identity) -> None:
     """CLI build (step-only, shared fixture)."""
-    assert (cli_built_project / "generated" / "step" / "FileTemplate.step").is_file()
+    assert (cli_built_project / "generated" / "step" / f"{identity.stem}.step").is_file()
 
 
-def test_cli_build_from_path_with_spaces(copied_project_with_spaces) -> None:
+def test_cli_build_from_path_with_spaces(copied_project_with_spaces, identity) -> None:
     """CLI build in a path containing spaces (own build, step-only)."""
     result = _cli("build", "--format", "step", cwd=copied_project_with_spaces)
     assert result.returncode == 0, f"CLI build failed in path with spaces: {result.stderr}"
-    assert (copied_project_with_spaces / "generated" / "step" / "FileTemplate.step").is_file()
+    assert (copied_project_with_spaces / "generated" / "step" / f"{identity.stem}.step").is_file()
 
 
 def test_cli_validate(copied_project) -> None:
@@ -44,10 +44,10 @@ def test_cli_validate(copied_project) -> None:
     assert '"status":"ok"' in result.stdout
 
 
-def test_cli_clean(copied_project) -> None:
+def test_cli_clean(copied_project, identity) -> None:
     """CLI build (step-only) then clean on a fresh project copy."""
     _cli("build", "--format", "step", cwd=copied_project)
-    assert (copied_project / "generated" / "step" / "FileTemplate.step").is_file()
+    assert (copied_project / "generated" / "step" / f"{identity.stem}.step").is_file()
     result = _cli("clean", cwd=copied_project)
     assert result.returncode == 0, f"CLI clean failed: {result.stderr}"
     assert not (copied_project / "generated" / "step").exists()

@@ -26,16 +26,16 @@ def step_ifc_project(tmp_path_factory: pytest.TempPathFactory, repo_root: Path) 
     return dest
 
 
-def test_build_selected_formats(copied_project) -> None:
+def test_build_selected_formats(copied_project, identity) -> None:
     """Programmatic build_project with restricted formats (step+ifc only)."""
     result = build_project(BuildOptions(project_root=copied_project, formats=("step", "ifc")))
     output = result.output_root
-    assert (output / "step" / "FileTemplate.step").is_file()
-    assert (output / "ifc" / "FileTemplate.ifc").is_file()
+    assert (output / "step" / f"{identity.stem}.step").is_file()
+    assert (output / "ifc" / f"{identity.stem}.ifc").is_file()
     assert not (output / "glb").exists() or not list((output / "glb").rglob("*"))
 
 
-def test_cli_repeated_format(step_ifc_project) -> None:
+def test_cli_repeated_format(step_ifc_project, identity) -> None:
     """CLI build with repeated --format flags produces expected formats."""
-    assert (step_ifc_project / "generated" / "step" / "FileTemplate.step").is_file()
+    assert (step_ifc_project / "generated" / "step" / f"{identity.stem}.step").is_file()
     assert not (step_ifc_project / "generated" / "glb").exists()

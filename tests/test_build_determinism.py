@@ -62,12 +62,12 @@ def two_builds(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> Two
 # ── 12.7 Failure rollback/recovery and determinism ──────────────────────────
 
 
-def test_two_clean_builds_identical(two_builds) -> None:
+def test_two_clean_builds_identical(two_builds, identity) -> None:
     assert two_builds.manifest1["design_semantic_hash"] == two_builds.manifest2["design_semantic_hash"]
     known_non_deterministic = {
         "run-metadata.json",
         "build-manifest.json",
-        "FileTemplate.step",
+        f"{identity.stem}.step",
     }
     bm1_stable_excluding_step = semantic_hash(
         [
@@ -96,8 +96,8 @@ def test_two_clean_builds_identical(two_builds) -> None:
         assert entry1["sha256"] == entry2["sha256"], f"SHA-256 mismatch for {path_key} between builds"
 
 
-def test_deterministic_nonvolatile_bytes(two_builds) -> None:
-    volatile_names = {"run-metadata.json", "build-manifest.json", "FileTemplate.step"}
+def test_deterministic_nonvolatile_bytes(two_builds, identity) -> None:
+    volatile_names = {"run-metadata.json", "build-manifest.json", f"{identity.stem}.step"}
     for entry1, entry2 in zip(two_builds.manifest1["artifacts"], two_builds.manifest2["artifacts"], strict=True):
         if Path(entry1["path"]).name in volatile_names:
             continue

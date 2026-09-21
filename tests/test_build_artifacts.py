@@ -100,11 +100,11 @@ def test_build_result_paths_point_to_final_output(build_manifest, built_output) 
         assert str(path).startswith(str(built_output))
 
 
-def test_build_annotations_complete_before_return(built_output) -> None:
+def test_build_annotations_complete_before_return(built_output, identity) -> None:
     ann_manifest = built_output / "drawings" / "annotation-manifest.json"
     assert ann_manifest.is_file(), f"Missing annotation manifest at {ann_manifest}"
     annotations = _load_json(ann_manifest)
-    assert annotations["provider_id"] == "file.template.annotations"
+    assert annotations["provider_id"] == identity.provider_id
     emitted = annotations["annotations"]
     assert isinstance(emitted, list)
     annotation_ids = [annotation["id"] for annotation in emitted]
@@ -149,8 +149,8 @@ def test_artifact_stable_artifact_set_hash(build_manifest) -> None:
     assert len(build_manifest["stable_artifact_set_hash"]) == 64
 
 
-def test_step_reload(built_output) -> None:
-    step_path = built_output / "step" / "FileTemplate.step"
+def test_step_reload(built_output, identity) -> None:
+    step_path = built_output / "step" / f"{identity.stem}.step"
     validation = _load_json(built_output / "step" / "validation.json")
     assert validation["valid"] is True
     solids = import_step(step_path).solids()
@@ -159,8 +159,8 @@ def test_step_reload(built_output) -> None:
     assert len(solids) == len(physical_ids)
 
 
-def test_ifc_parse_and_reconcile(built_output) -> None:
-    ifc = ifcopenshell.open(built_output / "ifc" / "FileTemplate.ifc")
+def test_ifc_parse_and_reconcile(built_output, identity) -> None:
+    ifc = ifcopenshell.open(built_output / "ifc" / f"{identity.stem}.ifc")
     ifc_validation = _load_json(built_output / "ifc" / "validation.json")
     assert ifc_validation["valid"] is True
     elements = ifc.by_type("IfcElement")
@@ -173,8 +173,8 @@ def test_ifc_parse_and_reconcile(built_output) -> None:
     )
 
 
-def test_ifc_proxy_elements_use_accurate_predefined_types(built_output) -> None:
-    ifc = ifcopenshell.open(built_output / "ifc" / "FileTemplate.ifc")
+def test_ifc_proxy_elements_use_accurate_predefined_types(built_output, identity) -> None:
+    ifc = ifcopenshell.open(built_output / "ifc" / f"{identity.stem}.ifc")
     elements = ifc.by_type("IfcBuildingElementProxy")
     assert len(elements) > 0
     valid_proxy_types = {"ELEMENT", "PROVISIONFORVOID"}
@@ -185,8 +185,8 @@ def test_ifc_proxy_elements_use_accurate_predefined_types(built_output) -> None:
         )
 
 
-def test_ifc_no_notdefined_predefined_types(built_output) -> None:
-    ifc = ifcopenshell.open(built_output / "ifc" / "FileTemplate.ifc")
+def test_ifc_no_notdefined_predefined_types(built_output, identity) -> None:
+    ifc = ifcopenshell.open(built_output / "ifc" / f"{identity.stem}.ifc")
     elements = ifc.by_type("IfcElement")
     for entity in elements:
         predefined_type = entity.PredefinedType
@@ -218,21 +218,21 @@ def test_quantities_inventory(built_output) -> None:
     assert "element_id" in rows[0] and "volume_mm3" in rows[0]
 
 
-def test_drawings_inventory(built_output) -> None:
+def test_drawings_inventory(built_output, identity) -> None:
     svg_paths = sorted((built_output / "drawings" / "svg").glob("*.svg"))
     dxf_paths = sorted((built_output / "drawings" / "dxf").glob("*.dxf"))
     assert len(svg_paths) == len(dxf_paths) == 4
     for svg, dxf in zip(svg_paths, dxf_paths, strict=True):
         assert svg.stem == dxf.stem
-    pdf_path = built_output / "drawings" / "pdf" / "FileTemplate_Conceptual_Drawings.pdf"
+    pdf_path = built_output / "drawings" / "pdf" / f"{identity.stem}_Conceptual_Drawings.pdf"
     assert pdf_path.is_file()
     pdf = PdfReader(pdf_path)
     assert len(pdf.pages) == 4
     assert all("Conceptual" in (page.extract_text() or "") for page in pdf.pages)
 
 
-def test_plan_svg_content(built_output) -> None:
-    plan = ET.parse(built_output / "drawings" / "svg" / "FileTemplate_plan.svg").getroot()
+def test_plan_svg_content(built_output, identity) -> None:
+    plan = ET.parse(built_output / "drawings" / "svg" / f"{identity.stem}_plan.svg").getroot()
     plan_source_ids = {source_id for element in plan.iter() if (source_id := element.attrib.get("data-source-id"))}
     design = _load_json(built_output / "manifests" / "design-manifest.json")
     design_ids = {element["id"] for element in design["elements"]}
