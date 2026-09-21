@@ -11,6 +11,7 @@ __pycache__/
 .coverage
 generated/*
 !generated/.gitkeep
+!generated/README.md
 *.FCBak
 *.FCStd
 .tools/
@@ -20,6 +21,7 @@ tools/*
 !tools/run-git-opencode-audit
 !tools/run-with-inactivity-watchdog
 !tools/reconcile-infrastructure
+!tools/README.md
 viewer/
 backup/
 .back_agents/
