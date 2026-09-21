@@ -59,7 +59,7 @@ def transaction(tmp_path: Path) -> Transaction:
     run("git", "init", "-b", "main", template, cwd=tmp_path)
     run("git", "config", "user.name", "Template", cwd=template)
     run("git", "config", "user.email", "template@example.com", cwd=template)
-    (template / "pyproject.toml").write_text("[project]\nname = \"file-template-cad\"\n")
+    (template / "pyproject.toml").write_text('[project]\nname = "file-template-cad"\n')
     (template / "tracked.txt").write_text("original\n")
     run("git", "add", "-A", cwd=template)
     run("git", "commit", "-m", "template", cwd=template)
@@ -69,7 +69,7 @@ def transaction(tmp_path: Path) -> Transaction:
     run("git", "config", "user.name", "Test Runner", cwd=checkout)
     run("git", "config", "user.email", "runner@example.com", cwd=checkout)
     (checkout / "tracked.txt").write_text("original\n")
-    (checkout / "pyproject.toml").write_text("[project]\nname = \"file-template-cad\"\n")
+    (checkout / "pyproject.toml").write_text('[project]\nname = "file-template-cad"\n')
     (checkout / "config.py").write_text("original = True\n")
     run("git", "add", "tracked.txt", "pyproject.toml", "config.py", cwd=checkout)
     run("git", "commit", "-m", "initial", cwd=checkout)
@@ -573,9 +573,7 @@ def test_infrastructure_is_reconciled_before_opencode_runs(transaction: Transact
     assert (checkout / "config.py").read_text() == "customer = 'keep me'\n"
 
     # Reconciliation landed as its own commit, and everything was pushed.
-    log_subjects = run(
-        "git", "log", "--format=%s", f"{drifted_head}..HEAD", cwd=checkout
-    ).stdout.splitlines()
+    log_subjects = run("git", "log", "--format=%s", f"{drifted_head}..HEAD", cwd=checkout).stdout.splitlines()
     assert "chore: reconcile infrastructure with file-template-cad" in log_subjects
     local, remote = heads(transaction)
     assert local == remote
