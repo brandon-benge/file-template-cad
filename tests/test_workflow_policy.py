@@ -11,6 +11,18 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+pytestmark = pytest.mark.skipif(
+    not (PROJECT_ROOT / ".github").is_dir(),
+    reason=(
+        "governance checks on this repository's own CI/workflow files -- meaningless outside "
+        "a full checkout of file-template-cad itself. A project seeded from this template "
+        "deliberately never receives .github/ (GithubReleaseTemplateSource's EXCLUDED_PREFIXES "
+        "in makeitours-data-plane), so every test in this file failed unconditionally in every "
+        "seeded project regardless of the actual change under review -- exit code 1 either way, "
+        "with no way for a project's own agent to distinguish that from a real regression."
+    ),
+)
+
 
 def test_ci_yml_exists():
     assert (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").is_file()
