@@ -310,7 +310,7 @@ def test_opencode_workflow_reconciles_infrastructure_before_running():
     assert 'python3 "$SCRIPT_DIR/reconcile-infrastructure" "$CAD_TEMPLATE_CHECKOUT"' in runner
     assert "MAKEITOURS_CAD_TEMPLATE_CHECKOUT" in runner
     reconcile_index = runner.index("reconcile-infrastructure")
-    assert reconcile_index < runner.index('readonly START_SHA=')
+    assert reconcile_index < runner.index("readonly START_SHA=")
     assert reconcile_index < runner.index("opencode run --format json")
     assert 'git commit -m "chore: reconcile infrastructure with file-template-cad"' in runner
 
@@ -318,7 +318,7 @@ def test_opencode_workflow_reconciles_infrastructure_before_running():
     # or the per-repo audit trail.
     reconciler_text = reconciler.read_text()
     assert '_CUSTOMER_TOP_LEVEL = {"config.py", "model.py", "drawing_annotations.py"}' in reconciler_text
-    assert 'models/' in reconciler_text
+    assert "models/" in reconciler_text
     assert '".makeitours/audit"' in reconciler_text
 
 
