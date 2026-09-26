@@ -9,9 +9,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .coverage
-generated/*
-!generated/.gitkeep
-!generated/README.md
+generated/
 *.FCBak
 *.FCStd
 .tools/

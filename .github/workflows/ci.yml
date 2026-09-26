@@ -162,8 +162,10 @@ jobs:
             fi
           done
       - name: Ignored output check
+        # generated/ is disposable build output: nothing under it may be committed, or every
+        # build that replaces the directory shows up as a source change.
         run: |
-          test -f generated/.gitkeep
+          test -z "$(git ls-files generated)"
 
   compatibility-report:
     needs:

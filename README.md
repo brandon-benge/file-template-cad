@@ -80,9 +80,9 @@ Open the URL printed in the terminal, typically
 `http://127.0.0.1:8080/`. The viewer supports orbit controls, element
 selection, measurement, and downloads of generated formats.
 
-Generated files are written to `generated/`. They are disposable build evidence
-and are ignored by Git except for `.gitkeep`; edit the authoritative Python
-source instead.
+Generated files are written to `generated/`. They are disposable build evidence,
+ignored by Git entirely (nothing under `generated/` is committed), and the build
+creates the directory; edit the authoritative Python source instead.
 
 ## Edit the design
 
