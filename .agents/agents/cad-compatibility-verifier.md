@@ -18,7 +18,7 @@ Verify the current project against the active environment and the pinned `python
 - Create a temporary Python environment only when the declared verification workflow specifically requires isolation.
 - Never edit source, tests, configuration, locks, workflows, generated output, agents, skills, or governance files.
 - Never fix failures.
-- Never invoke Git directly. Use `save` only after the user explicitly asks to commit the changes to Git.
+- Never invoke Git directly, and never commit or push. The person saves from the MakeItOurs app (or with Git).
 
 ## Verification scope
 
@@ -54,7 +54,6 @@ Read public remote package documentation or repository content only when needed 
 
 - Invoke `file-design-maintainer` for a confirmed blocker in editable parent-project source.
 - Invoke `file-artifact-reviewer` when generated output requires semantic, labeling, metadata, standards, visual, or cross-format review.
-- Invoke `save` only after an explicit user request to commit the changes to Git.
 - Make at most one handoff for the same distinct blocker.
 - Return unresolved blockers, evidence, and required user input to the caller.
 

@@ -1,0 +1,85 @@
+name: makeitours
+
+# A MakeItOurs ticket: the repository owner opens an issue, or comments `/mio` or `/makeitours`
+# on one. makeitours-agentic (in the public runner image, pinned by digest) makes the change,
+# validates it, commits and pushes it with an audit record, starts CI and the release, and
+# comments the outcome or its question on the issue. Model calls go directly to the provider
+# chosen in the MakeItOurs app (MAKEITOURS_OPENCODE_MODEL and that provider's key secret).
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: makeitours-${{ github.repository }}
+  queue: max
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  makeitours:
+    name: Handle MakeItOurs request
+    if: >
+      github.actor == github.repository_owner &&
+      (
+        github.event_name == 'issues' ||
+        (
+          github.event_name == 'issue_comment' &&
+          (
+            startsWith(github.event.comment.body, '/mio') ||
+            startsWith(github.event.comment.body, '/makeitours')
+          )
+        )
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    container:
+      # makeitours-agentic v0.1.30. Updated only by a template commit (infrastructure reconcile).
+      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:1d8ced85e5c949fea3ca543e7ba057b052ab847d471d0402f1740d765269a773
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fetch file-template-cad gold standard
+        shell: bash
+        # A shallow, anonymous clone of the public template outside the working tree; the runner
+        # reconciles this repository's infrastructure against it before the agent runs.
+        run: |
+          git clone --depth 1 https://github.com/brandon-benge/file-template-cad.git \
+            "$RUNNER_TEMP/file-template-cad-gold"
+
+      - name: Run makeitours-agentic with repository audit
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MAKEITOURS_OPENCODE_MODEL: ${{ vars.MAKEITOURS_OPENCODE_MODEL }}
+          MAKEITOURS_CAD_TEMPLATE_CHECKOUT: ${{ runner.temp }}/file-template-cad-gold
+          MAKEITOURS_FAILURE_ARTIFACT_DIR: ${{ runner.temp }}/makeitours-failure-artifacts
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+        run: makeitours-agentic-git-run
+
+      - name: Upload audit evidence when the transaction fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: makeitours-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/makeitours-failure-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,19 +1,17 @@
 ---
 name: stop-ui
-description: Stop the managed local python-cad viewer with the stop-ui tool or its command-line fallback. Use when the user explicitly asks to stop, shut down, terminate, or close the local CAD UI server, including from Claude or OpenAI environments without OpenCode tools.
+description: Stop the managed local python-cad viewer. Use when the user explicitly asks to stop, shut down, terminate, or close the local CAD UI server.
 ---
 
 # Stop UI
 
-Act only after the user explicitly asks to stop the viewer. Prefer the
-`stop-ui` tool when it is available.
+Act only after the user explicitly asks to stop the viewer.
 
-When OpenCode tools are not available, send Ctrl-C to the managed terminal
-session that started this viewer. If no live managed session exists, read the
-PID from `.opencode/ui-server.pid`, then run:
+Send Ctrl-C to the managed terminal session that started this viewer. If no live managed session exists, read the
+PID from `.makeitours/ui-server.pid`, then run:
 
 ```bash
-UI_SERVER_PID="$(.venv/bin/python -c 'import json; print(json.load(open(".opencode/ui-server.pid"))["pid"])')"
+UI_SERVER_PID="$(.venv/bin/python -c 'import json; print(json.load(open(".makeitours/ui-server.pid"))["pid"])')"
 ps -p "$UI_SERVER_PID" -o command=
 kill -TERM "$UI_SERVER_PID"
 ```

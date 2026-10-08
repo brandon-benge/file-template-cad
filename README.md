@@ -116,16 +116,20 @@ Actions via the manually dispatched `File Template CAD End-to-End` workflow.
 
 ## Git-triggered AI audit
 
-Authorized GitHub issues and `/oc` or `/opencode` comments enter one serialized
-OpenCode queue. Each run uses this repository's remote model selection: the
-workflow reads the `MAKEITOURS_OPENCODE_MODEL` Actions variable (a
-`providerID/modelID` reference such as `opencode-go/glm-5.2`, split at the
-first slash, so the model may itself contain one, as OpenRouter's
-`openrouter/deepseek/deepseek-flash-latest` does) and passes the
-three candidate provider API-key secrets; the audit runner validates the
-reference and requires the selected provider's credential before OpenCode
-starts, failing fast with a diagnostic artifact rather than falling back to
-another model. An accepted changed run commits its project changes and
+Authorized GitHub issues and `/mio` or `/makeitours` comments enter one
+serialized queue (`.github/workflows/makeitours.yml`), run by makeitours-agentic
+in its public runner image, pinned by digest. Each run uses this repository's
+remote model selection, set in the MakeItOurs app: the `MAKEITOURS_OPENCODE_MODEL`
+Actions variable (a `providerID/modelID` reference such as `opencode-go/glm-5.2`,
+split at the first slash, so the model may itself contain one, as OpenRouter's
+`openrouter/deepseek/deepseek-flash-latest` does) and the selected provider's
+API-key secret. Calls go directly to that provider; no model gateway is used.
+The runner validates the reference and requires the provider's credential
+before the agent starts, failing fast with a diagnostic artifact and an issue
+comment rather than falling back to another model. Every run ends with a
+comment on the issue: the published commit, no change, the failure, or the
+AI's question. Reply to a question with `/mio <answer>` and the change starts
+again with your answer. An accepted changed run commits its project changes and
 `.makeitours/audit/v1/<run-id>/` envelope together. An accepted request that needs no
 project edit creates an audit-only `no_changes` commit. Failed or rejected runs
 do not create or push a commit; their bounded, redacted diagnostic evidence is
@@ -159,6 +163,6 @@ for the project roles:
 - `file-artifact-reviewer`
 - `cad-compatibility-verifier`
 
-Every agent can use the `save` skill, but only after the user explicitly asks
-to commit the changes to Git. The repository also provides `start-ui`,
-`stop-ui`, and `upgrade-ui` tools with matching skills.
+No agent commits: save from the MakeItOurs app (or with Git). The repository
+also provides `start-ui`, `stop-ui`, and `upgrade-ui` skills for the local
+viewer.

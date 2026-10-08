@@ -145,22 +145,6 @@ jobs:
           assert 'site-packages' in python_cad_tools.__file__, f'Not installed: {python_cad_tools.__file__}'
           print(f'Package location: {python_cad_tools.__file__}')
           "
-      - name: Symlink check
-        run: |
-          for link in .opencode/agents .opencode/skills; do
-            if test -L "$link"; then
-              target="$(readlink "$link")"
-              echo "Checking $link -> $target"
-              test -e "$link" || { echo "BROKEN: $link"; exit 1; }
-              resolved="$(readlink -f "$link")"
-              case "$resolved" in
-                "$PWD"/*) echo "  contained: $resolved" ;;
-                *) echo "  OUTSIDE REPO: $resolved"; exit 1 ;;
-              esac
-            else
-              echo "Not a symlink (or missing): $link"
-            fi
-          done
       - name: Ignored output check
         # generated/ is disposable build output: nothing under it may be committed, or every
         # build that replaces the directory shows up as a source change.

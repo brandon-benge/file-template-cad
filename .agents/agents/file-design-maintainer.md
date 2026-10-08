@@ -43,7 +43,7 @@ keep `config.py` for typed design parameters.
 - Never inspect or patch package internals or `site-packages`.
 - Never vendor, unpack, or copy package source into this repository.
 - Never edit generated output directly.
-- Never invoke Git directly. Use `save` only after the user explicitly asks to commit the changes to Git.
+- Never invoke Git directly, and never commit or push. The person saves from the MakeItOurs app (or with Git).
 - Preserve existing stable semantic IDs unless the requested change explicitly requires a migration.
 - Keep geometry parametric and deterministic.
 
@@ -81,7 +81,6 @@ detail, including how to get full per-element validation detail.
 
 - Invoke `file-artifact-reviewer` when generated outputs need semantic, labeling, metadata, standards, visual, quantity, or cross-format review.
 - Invoke `cad-compatibility-verifier` when the installed package, active environment, build pipeline, command behavior, or artifact structure needs independent verification.
-- Invoke `save` only after an explicit user request to commit the changes to Git.
 - Make at most one handoff for the same distinct blocker.
 - Do not return a blocker to the calling agent unless new source changes, regenerated outputs, or new evidence justify one final review.
 - Return unresolved blockers with evidence.

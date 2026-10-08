@@ -1,7 +1,6 @@
 ---
 name: file-artifact-reviewer
 description: Review generated CAD artifacts for semantic correctness, required complex types and labels, metadata completeness, standards evidence, and cross-format consistency.
-compatibility: opencode
 metadata:
   repository: benge-property-cad
   role: review

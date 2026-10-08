@@ -1,7 +1,6 @@
 ---
 name: file-design-maintainer
 description: Implement and validate property-specific parametric CAD changes, complex element semantics, labels, metadata, relationships, tests, and supported outputs.
-compatibility: opencode
 metadata:
   repository: benge-property-cad
   role: implementation
@@ -178,7 +177,7 @@ Invoke `cad-compatibility-verifier` for:
 - HTTP, site, or browser verification
 - suspected upstream package defects
 
-Invoke `save` only after the user explicitly asks to commit the changes to Git.
+Never commit or push. The person saves from the MakeItOurs app (or with Git).
 
 ## Delegation safeguards
 

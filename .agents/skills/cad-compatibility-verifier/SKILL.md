@@ -1,7 +1,6 @@
 ---
 name: cad-compatibility-verifier
 description: Independently verify the current project, pinned PyPI CAD package, environment, declared commands, generated file presence, and structural readability without editing source.
-compatibility: opencode
 metadata:
   repository: benge-property-cad
   role: verification
@@ -130,7 +129,7 @@ source.
 Invoke `file-artifact-reviewer` when files are technically valid but require
 semantic, label, metadata, standards, visual, or cross-format review.
 
-Invoke `save` only after the user explicitly asks to commit the changes to Git.
+Never commit or push. The person saves from the MakeItOurs app (or with Git).
 
 ## Machine-readable report
 

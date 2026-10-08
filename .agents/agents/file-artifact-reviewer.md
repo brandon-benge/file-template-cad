@@ -16,7 +16,7 @@ Review generated project outputs only. Cover design, site, structural, plumbing,
   skills, or governance source.
 - Never edit any file.
 - Never run shell commands.
-- Never invoke Git directly. Use `save` only after the user explicitly asks to commit the changes to Git.
+- Never invoke Git directly, and never commit or push. The person saves from the MakeItOurs app (or with Git).
 - Do not claim engineering, code, permit, survey, or licensed-trade approval.
 - Do not infer source-level causes unsupported by artifact evidence.
 

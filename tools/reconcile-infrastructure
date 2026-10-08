@@ -13,8 +13,8 @@ generated/ are never touched.
 
 Usage: reconcile-infrastructure <path-to-file-template-cad-checkout>
 
-Run from the repository root. Invoked by tools/run-git-opencode-audit before OpenCode's
-edit loop so the AI works against an up-to-date template. Unlike the makeitours-app Mac
+Run from the repository root. Invoked by makeitours-agentic-git-run (the makeitours.yml ticket
+runner) before the agent runs, so the AI works against an up-to-date template. Unlike the makeitours-app Mac
 client (which vendors a snapshot to avoid a Guideline 2.5.2 risk in a sandboxed,
 App-Store-distributed binary), this is developer-controlled CI and reconciles against the
 template's live committed content -- see

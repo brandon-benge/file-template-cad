@@ -95,25 +95,22 @@ Delegation must be bounded:
    regenerated outputs, or new verification evidence justify one final review.
 4. Return unresolved blockers to the caller rather than repeating a delegation
    cycle.
-5. Any agent may invoke `save`, but only after the user explicitly asks to
-   commit the changes to Git.
+5. No agent commits or pushes. The person saves from the MakeItOurs app,
+   whose Save runs `makeitours-agentic-commit` directly (or with Git).
 
-`permission.task` in `opencode.jsonc` is the enforcement layer for model-driven
-delegation. This file describes expected behavior but is not an authorization
-boundary.
+makeitours-agentic enforces the bounded delegation and the writable-file
+allowlist mechanically. This file describes expected behavior but is not an
+authorization boundary.
 
 ## Question policy
 
-`opencode.jsonc` sets `permission.question` to `deny` for every agent in this
-repository, so an OpenCode session must never pause a task to ask the user a
-clarifying question. When a request is ambiguous, make the best-supported
-assumption from available evidence (design source, generated artifacts, and
-this file), state that assumption, and proceed, or return the request
-unresolved with the specific blocker. This restriction applies only to
-OpenCode sessions governed by this `opencode.jsonc`; other agent runtimes
-working in this repository (for example local Mac AI / Claude Code sessions)
-are not bound by it and may ask the user clarifying questions when genuinely
-blocked.
+When a request is ambiguous, prefer the best-supported assumption from
+available evidence (design source, generated artifacts, and this file), state
+that assumption, and proceed. Ask the person one clarifying question only when
+the request genuinely cannot be carried out without the answer. In the
+MakeItOurs app the question appears in the conversation; in a GitHub ticket it
+is posted on the issue, and a `/mio <answer>` reply starts the change again with
+the answer.
 
 ## File Design Maintainer
 
@@ -132,8 +129,7 @@ The design maintainer:
   itself once, after finishing every edit the request requires — not after
   each individual edit (see "Verification expectations" below)
 - delegates artifact review to `file-artifact-reviewer` when needed
-- never invokes Git directly and uses `save` only after an explicit user
-  request to commit the changes to Git
+- never invokes Git directly and never commits or pushes
 
 When required functionality is unavailable from the installed public package,
 return an upstream `python-cad-tools` requirement with evidence.
@@ -153,7 +149,7 @@ It must not:
 - edit files
 - run shell commands
 - infer implementation details that are not evidenced by generated output
-- invoke `save` without an explicit user request to commit the changes to Git
+- commit or push
 
 Classify findings as blocker, important, or advisory. For each finding, report
 the affected artifact and stable IDs, the observed issue, expected result,
@@ -187,8 +183,7 @@ It must not:
 - edit source, tests, configuration, locks, workflows, generated output, agents,
   or governance
 - fix failures during the verification run
-- invoke Git directly or invoke `save` without an explicit user request to
-  commit the changes to Git
+- invoke Git directly, commit, or push
 
 It may read public remote package documentation or repository content only when
 needed to diagnose a package-level blocker. If access, documentation, parent
@@ -197,8 +192,9 @@ the exact blocker, evidence, and user input or access needed.
 
 ## Verification expectations
 
-GitHub-triggered OpenCode runs are distinct from local Mac AI requests. They
-are serialized by the repository workflow. Accepted runs are persisted under
+GitHub-triggered requests (an issue, or a `/mio` or `/makeitours` comment,
+run by makeitours-agentic in `.github/workflows/makeitours.yml`) are distinct
+from local Mac AI requests. They are serialized by the repository workflow. Accepted runs are persisted under
 `.makeitours/audit/v1/`; failed or rejected runs never commit or push and retain
 bounded evidence only in GitHub Actions logs and temporary artifacts. Agents
 must not edit, delete, or overwrite an existing audit run directory and must
@@ -210,7 +206,7 @@ change. Do not run integration, viewer, or E2E tests by default for a localized
 design-source change.
 
 **Verify once, after all edits, in every session type.** Local Mac AI
-sessions, GitHub-triggered OpenCode runs, and CI (`ci.yml`) all have the
+sessions, GitHub-triggered requests, and CI (`ci.yml`) all have the
 project's `ruff`/`mypy`/`pytest`/`python-cad` available. Run the applicable
 tier's checks once, after finishing every edit the request requires — not
 after each individual edit, and not repeatedly while iterating. `ruff` and
@@ -300,8 +296,8 @@ There is no dependency-version selection. `pyproject.toml`, the
 outside the four customer-owned CAD authoring paths (`config.py`, `model.py`,
 `drawing_annotations.py`, `models/**/*.py`) are infrastructure: reconciled
 automatically against `file-template-cad`'s current committed content on
-every Git-triggered run (`tools/run-git-opencode-audit` invokes
-`tools/reconcile-infrastructure` before OpenCode's edit loop), and against the
+every Git-triggered run (the `makeitours.yml` runner invokes
+`tools/reconcile-infrastructure` before the agent runs), and against the
 MakeItOurs app's vendored snapshot on every Mac build. No agent edits
 `pyproject.toml` or dependency locks; advancing `python-cad-tools` means
 updating `file-template-cad` itself.
@@ -311,24 +307,11 @@ environment-specific skipped checks and the reason.
 
 ## Save and persistence
 
-`save` is a skill available to every working agent; there is no separate save
-agent. An agent may load it only after the user explicitly asks to commit or
-save the changes to Git. Never infer this intent from task completion,
-approval, a request to continue, or a generic request to save a file.
-
-`specrepo-autocommit` performs automated commits and is only trusted inside a
-real Git checkout on the user's local machine. Before invoking it, the agent
-must confirm the working directory is a Git checkout
-(`git rev-parse --is-inside-work-tree`) and that the environment is the user's
-local machine, not an isolated, sandboxed, ephemeral, containerized, or remote
-runner environment. When those conditions hold, the agent may invoke
-`specrepo-autocommit` (or its command-line fallback) exactly once with the
-supplied summary and explicit confirmation argument.
-
-When the environment is not trusted, the agent must not invoke
-`specrepo-autocommit` or its fallback. Instead it commits with plain Git
-commands (`git add -A` and `git commit -m "..."`) exactly once from the
-repository root. It must not push, amend, force, or retry automatically, and
-must not fall back to `specrepo-autocommit` from an untrusted environment.
+No agent commits, pushes, or loads a commit tool, in any session type. GitHub
+tickets are committed by the ticket runner (`makeitours-agentic-git-run`) after
+its own validation. Local work is saved by the person: from the MakeItOurs
+app, whose Save runs `makeitours-agentic-commit` directly (it stages, writes the
+commit message with the selected AI, commits with a sign-off, and pushes through
+the app), or with plain Git.
 
 The user decides when work is ready to be committed. Agents must not assume it.

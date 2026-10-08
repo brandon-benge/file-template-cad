@@ -1,13 +1,12 @@
 ---
 name: upgrade-ui
-description: Upgrade the current CAD project installation and launch the rebuilt local viewer with the upgrade-ui tool or its command-line fallback. Use when the user explicitly asks to upgrade, refresh, or reinstall the local project and start its UI, including from Claude or OpenAI environments without OpenCode tools.
+description: Upgrade the current CAD project installation and launch the rebuilt local viewer. Use when the user explicitly asks to upgrade, refresh, or reinstall the local project and start its UI.
 ---
 
 # Upgrade UI
 
 Act only after an explicit upgrade request. Use the requested port, or port
-8080 by default. Prefer the `upgrade-ui` tool when it is available. When
-OpenCode tools are not available, run this sequence from the repository root:
+8080 by default. Run this sequence from the repository root:
 
 ```text
 .venv/bin/pip install --upgrade .
