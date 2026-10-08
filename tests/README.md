@@ -9,6 +9,10 @@ contract files' byte-identity is enforced automatically, by
 runner's own transaction tests live with it, in makeitours-agentic
 (`containers/runner/tests/`).
 
+- **`test_reconcile_source_inputs.py`** — `tools/reconcile-infrastructure` keeps
+  each project's `[tool.python-cad] source-inputs` (its own design files, in its
+  own order) while taking the rest of `pyproject.toml` from the template, and
+  never touches design files.
 - **`conftest.py`** — shared fixtures: `repo_root`, project-copying helpers for
   isolated build fixtures, and `identity` (the project's own model id, artifact
   stem, and annotation provider id, read from a real build rather than typed

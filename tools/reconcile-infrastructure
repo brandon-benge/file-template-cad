@@ -11,6 +11,13 @@ overwritten with it; every tracked infrastructure file the template does not hav
 removed. Regular files and symlinks are both handled; the four customer-owned paths and
 generated/ are never touched.
 
+One exception keeps a project working: pyproject.toml's [tool.python-cad] source-inputs names
+the project's own design files, so it is rebuilt rather than copied (2026-10-08 approval,
+Amendment 2). Existing design entries stay in the project's order while the file exists,
+design files present but not listed are appended (sorted), and other entries follow the
+template. A project whose list already matches its files keeps it byte-for-byte. The app's
+InfrastructureReconciler applies the same rule.
+
 Usage: reconcile-infrastructure <path-to-file-template-cad-checkout>
 
 Run from the repository root. Invoked by makeitours-agentic-git-run (the makeitours.yml ticket
@@ -25,9 +32,11 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
+import tomllib
 
 _CUSTOMER_TOP_LEVEL = {"config.py", "model.py", "drawing_annotations.py"}
 
@@ -70,6 +79,66 @@ def _remove(path: pathlib.Path) -> None:
         shutil.rmtree(path)
 
 
+_SOURCE_INPUTS = re.compile(r"^source-inputs = \[\n(?:.*\n)*?\]", re.MULTILINE)
+
+
+def _source_inputs(text: str) -> list[str] | None:
+    try:
+        value = tomllib.loads(text).get("tool", {}).get("python-cad", {}).get("source-inputs")
+    except tomllib.TOMLDecodeError:
+        return None
+    return [entry for entry in value if isinstance(entry, str)] if isinstance(value, list) else None
+
+
+def _design_files(repo: pathlib.Path) -> list[str]:
+    found = [name for name in sorted(_CUSTOMER_TOP_LEVEL) if (repo / name).is_file()]
+    models = repo / "models"
+    if models.is_dir():
+        found += sorted(
+            path.relative_to(repo).as_posix() for path in models.rglob("*.py") if path.is_file() and not path.is_symlink()
+        )
+    return found
+
+
+def merged_source_inputs(project: list[str] | None, template: list[str], design_on_disk: list[str]) -> list[str]:
+    """The project's design-file list kept, the template's other entries applied."""
+    present = set(design_on_disk)
+    template_other = [entry for entry in template if not _is_customer_owned(entry)]
+    result: list[str] = []
+    for entry in project if project is not None else template:
+        if entry in result:
+            continue
+        if (entry in present) if _is_customer_owned(entry) else (entry in template_other):
+            result.append(entry)
+    result += [entry for entry in template_other if entry not in result]
+    result += [entry for entry in design_on_disk if entry not in result]
+    return result
+
+
+def _reconciled_pyproject(template_text: str, project_text: str | None, repo: pathlib.Path) -> str:
+    """The template's pyproject.toml with source-inputs rebuilt for this project."""
+    template_list = _source_inputs(template_text)
+    match = _SOURCE_INPUTS.search(template_text)
+    if template_list is None or match is None:
+        return template_text
+    project_list = _source_inputs(project_text) if project_text is not None else None
+    entries = merged_source_inputs(project_list, template_list, _design_files(repo))
+    block = "source-inputs = [\n" + "".join(f'  "{entry}",\n' for entry in entries) + "]"
+    return template_text[: match.start()] + block + template_text[match.end() :]
+
+
+def _copy_pyproject(source: pathlib.Path, destination: pathlib.Path, repo: pathlib.Path) -> bool:
+    project_text = destination.read_text() if destination.is_file() and not destination.is_symlink() else None
+    desired = _reconciled_pyproject(source.read_text(), project_text, repo)
+    if project_text == desired:
+        return False
+    if os.path.lexists(destination):
+        _remove(destination)
+    destination.write_text(desired)
+    shutil.copymode(source, destination)
+    return True
+
+
 def _copy_from_template(source: pathlib.Path, destination: pathlib.Path) -> bool:
     """Copy one entry, returning True when the destination actually changed."""
     if source.is_symlink():
@@ -110,7 +179,11 @@ def main(argv: list[str]) -> int:
     changed: list[str] = []
 
     for relative_path in template_infra:
-        if _copy_from_template(template / relative_path, repo / relative_path):
+        source = template / relative_path
+        if relative_path == "pyproject.toml" and source.is_file() and not source.is_symlink():
+            if _copy_pyproject(source, repo / relative_path, repo):
+                changed.append(relative_path)
+        elif _copy_from_template(source, repo / relative_path):
             changed.append(relative_path)
 
     for relative_path in _tracked_infrastructure(repo):
