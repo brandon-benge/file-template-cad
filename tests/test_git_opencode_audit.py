@@ -323,6 +323,11 @@ def test_bare_model_id_rejected_before_opencode(transaction: Transaction):
         "provider/model with space",
         "provider/model\t",
         "provider/mode\x7f",
+        "openrouter//model",
+        "openrouter/vendor/",
+        "openrouter/../model",
+        "openrouter/./model",
+        "openrouter/a/b/c/d",
     ],
 )
 def test_malformed_model_reference_rejected(transaction: Transaction, reference: str):
@@ -334,6 +339,44 @@ def test_malformed_model_reference_rejected(transaction: Transaction, reference:
     manifest = json.loads((artifact / "run.json").read_text())
     assert manifest["failure_stage"] == "model_selection"
     assert "run" not in called_commands(transaction)
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["~deepseek/deepseek-flash-latest", "anthropic/claude-sonnet", "vendor/family/model:free"],
+)
+def test_vendor_prefixed_model_reaches_opencode(transaction: Transaction, model: str):
+    """OpenRouter-style ids keep their vendor prefix: the reference splits at
+    the first slash and is passed to OpenCode whole (2026-10-07)."""
+    env = {key: value for key, value in transaction["env"].items() if key != "OPENCODE_API_KEY"}
+    env["OPENROUTER_API_KEY"] = "secret-openrouter"
+    env["MAKEITOURS_OPENCODE_MODEL"] = f"openrouter/{model}"
+    env["MAKEITOURS_TEST_OPENCODE_MODE"] = "fail"
+    result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
+
+    # Past model selection: OpenCode itself ran (and the fake failed it).
+    assert result.returncode == 7, result.stderr
+    dump = json.loads((transaction["artifacts"] / "100-1" / "provider-model-diagnostic.json").read_text())
+    assert dump["attempted_reference"] == f"openrouter/{model}"
+    assert dump["parse"] == {"provider_id": "openrouter", "model_id": model, "error": None}
+
+
+def test_vendor_prefixed_model_completes_a_change(transaction: Transaction):
+    env = {key: value for key, value in transaction["env"].items() if key != "OPENCODE_API_KEY"}
+    env["OPENROUTER_API_KEY"] = "secret-openrouter"
+    env["MAKEITOURS_OPENCODE_MODEL"] = "openrouter/~deepseek/deepseek-flash-latest"
+    env["MAKEITOURS_TEST_OPENCODE_MODE"] = "change"
+    result = run(RUNNER, transaction["trigger"], cwd=transaction["checkout"], env=env, check=False)
+
+    assert result.returncode == 0, result.stderr
+    local, remote = heads(transaction)
+    assert local == remote
+    assert local != transaction["start"]
+
+
+def test_runner_declares_vendor_model_support():
+    """The app reads this marker before saving a vendor-prefixed model."""
+    assert "# makeitours-model-reference: provider/model-with-slashes (v2)" in RUNNER.read_text().splitlines()[:3]
 
 
 def test_oversized_model_reference_rejected(transaction: Transaction):

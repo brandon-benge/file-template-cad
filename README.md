@@ -118,8 +118,10 @@ Actions via the manually dispatched `File Template CAD End-to-End` workflow.
 
 Authorized GitHub issues and `/oc` or `/opencode` comments enter one serialized
 OpenCode queue. Each run uses this repository's remote model selection: the
-workflow reads the `MAKEITOURS_OPENCODE_MODEL` Actions variable (an exact
-`providerID/modelID` reference such as `opencode-go/glm-5.2`) and passes the
+workflow reads the `MAKEITOURS_OPENCODE_MODEL` Actions variable (a
+`providerID/modelID` reference such as `opencode-go/glm-5.2`, split at the
+first slash, so the model may itself contain one, as OpenRouter's
+`openrouter/deepseek/deepseek-flash-latest` does) and passes the
 three candidate provider API-key secrets; the audit runner validates the
 reference and requires the selected provider's credential before OpenCode
 starts, failing fast with a diagnostic artifact rather than falling back to

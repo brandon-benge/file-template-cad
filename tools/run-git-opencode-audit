@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# makeitours-model-reference: provider/model-with-slashes (v2)
 # Runs one Git-triggered OpenCode transaction for this repository.
 #
 # Invoked by the "Run OpenCode with repository audit" step in
@@ -71,10 +72,20 @@ validate_model_reference() {
     model_parse_error="MAKEITOURS_OPENCODE_MODEL exceeds $MAX_MODEL_REFERENCE_BYTES bytes"
     return 1
   fi
-  if test "$(printf '%s' "$reference" | tr -cd '/')" != "/"; then
-    model_parse_error="MAKEITOURS_OPENCODE_MODEL must be exactly providerID/modelID with one slash"
+  # providerID/modelID, split at the first slash as OpenCode does; the model
+  # may itself contain slashes (OpenRouter's vendor/model). Every segment must
+  # be non-empty and not `.`/`..`, with at most 4 segments.
+  local slashes
+  slashes="$(printf '%s' "$reference" | tr -cd '/' | wc -c | tr -d ' ')"
+  if test "$slashes" -lt 1 || test "$slashes" -gt 3; then
+    model_parse_error="MAKEITOURS_OPENCODE_MODEL must be providerID/modelID (the model may contain at most two further slashes)"
     return 1
   fi
+  case "/$reference/" in
+    *//*|*/./*|*/../*)
+      model_parse_error="MAKEITOURS_OPENCODE_MODEL must not contain empty, '.' or '..' segments"
+      return 1 ;;
+  esac
   case "$reference" in
     *[[:space:][:cntrl:]]*)
       model_parse_error="MAKEITOURS_OPENCODE_MODEL must not contain whitespace or control characters"
