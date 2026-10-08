@@ -17,6 +17,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "reconcile-infrastructu
 def _load():
     loader = importlib.machinery.SourceFileLoader("reconcile_infrastructure", str(SCRIPT))
     spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
     return module
