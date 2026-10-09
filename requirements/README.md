@@ -23,7 +23,9 @@ every pin equals the version installed in the released
 `makeitours-agentic` sandbox image. The baseline came from the `v0.1.22` image's x86_64 toolchain on
 2026-09-26. On 2026-10-07, the lock was regenerated in Linux/amd64 Python 3.12
 with `--upgrade-package=python-cad-tools==0.1.17` for the MakeItOurs viewer
-branding update; all other package pins were preserved. The matching sandbox
+branding update; all other package pins were preserved. On 2026-10-08 all four
+locks were regenerated the same way with `--upgrade-package=python-cad-tools==0.1.18`
+(curved solids pass the IFC bounds check); all other pins were preserved. The matching sandbox
 image must consume this released lock before hosted builds use it. To regenerate:
 export the image's versions (`docker run --platform linux/amd64 <image> pip
 list --format=freeze`, minus `pip`, `setuptools`, `wheel` and
