@@ -1,0 +1,144 @@
+{
+  "_comment": "Shared reconcile-plan fixtures (2026-10-09 approval, project-upgrade-button). tools/reconcile-infrastructure --plan and the app's InfrastructurePlan must both produce `expected` (sorted by path) for every case; makeitours-app copies this file into its tests. `template` is a release tree; `project` is a git-tracked project. Contents are UTF-8 text.",
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "already_current",
+      "template": {
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
+        "tools/build": "echo v2\n",
+        "config.py": "T=1\n"
+      },
+      "project": {
+        "config.py": "P=1\n",
+        "drawing_annotations.py": "P\n",
+        "model.py": "M=1\n",
+        "models/__init__.py": "",
+        "models/starter_model.py": "S=1\n",
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
+        "tools/build": "echo v2\n"
+      },
+      "expected": []
+    },
+    {
+      "name": "design_files_never_change",
+      "template": {
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
+        "config.py": "TEMPLATE\n",
+        "model.py": "TEMPLATE\n",
+        "models/starter_model.py": "TEMPLATE\n",
+        "drawing_annotations.py": "TEMPLATE\n"
+      },
+      "project": {
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
+        "config.py": "MINE\n",
+        "model.py": "MINE\n",
+        "models/starter_model.py": "MINE\n",
+        "drawing_annotations.py": "MINE\n",
+        "models/__init__.py": ""
+      },
+      "expected": []
+    },
+    {
+      "name": "add_update_remove",
+      "template": {
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
+        "tools/build": "echo v2\n",
+        "tests/test_new.py": "def test(): pass\n",
+        "requirements/locks/dev.lock": "python-cad-tools==0.1.18\n"
+      },
+      "project": {
+        "config.py": "P=1\n",
+        "drawing_annotations.py": "P\n",
+        "model.py": "M=1\n",
+        "models/__init__.py": "",
+        "models/starter_model.py": "S=1\n",
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
+        "tools/build": "echo v1\n",
+        "tools/retired": "old\n",
+        "requirements/locks/dev.lock": "python-cad-tools==0.1.17\n"
+      },
+      "expected": [
+        {
+          "path": "requirements/locks/dev.lock",
+          "action": "update"
+        },
+        {
+          "path": "tests/test_new.py",
+          "action": "add"
+        },
+        {
+          "path": "tools/build",
+          "action": "update"
+        },
+        {
+          "path": "tools/retired",
+          "action": "remove"
+        }
+      ]
+    },
+    {
+      "name": "pyproject_updates_but_keeps_source_inputs",
+      "template": {
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n"
+      },
+      "project": {
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.0.9\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/shed.py\",\n  \"models/roof.py\",\n  \"pyproject.toml\",\n]\n",
+        "config.py": "P\n",
+        "drawing_annotations.py": "P\n",
+        "model.py": "P\n",
+        "models/__init__.py": "",
+        "models/shed.py": "P\n",
+        "models/roof.py": "P\n"
+      },
+      "expected": [
+        {
+          "path": "pyproject.toml",
+          "action": "update"
+        }
+      ],
+      "expected_contents": {
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/shed.py\",\n  \"models/roof.py\",\n  \"pyproject.toml\",\n]\n"
+      }
+    },
+    {
+      "name": "audit_and_generated_are_untouched",
+      "template": {
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n"
+      },
+      "project": {
+        "config.py": "P=1\n",
+        "drawing_annotations.py": "P\n",
+        "model.py": "M=1\n",
+        "models/__init__.py": "",
+        "models/starter_model.py": "S=1\n",
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
+        ".makeitours/audit/v1/1-1/run.json": "{}\n",
+        "generated/.gitkeep": ""
+      },
+      "expected": []
+    },
+    {
+      "name": "release_identity_is_written_from_a_release_and_kept_by_a_checkout",
+      "template": {
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
+        ".makeitours/template-release.json": "{\"schema_version\": 1, \"release\": \"v0.1.0.38\"}\n"
+      },
+      "project": {
+        "config.py": "P=1\n",
+        "drawing_annotations.py": "P\n",
+        "model.py": "M=1\n",
+        "models/__init__.py": "",
+        "models/starter_model.py": "S=1\n",
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
+        ".makeitours/template-release.json": "{\"schema_version\": 1, \"release\": \"v0.1.0.30\"}\n"
+      },
+      "expected": [
+        {
+          "path": ".makeitours/template-release.json",
+          "action": "update"
+        }
+      ]
+    }
+  ]
+}

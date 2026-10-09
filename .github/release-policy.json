@@ -1,0 +1,5 @@
+{
+  "_comment": "Upgrade policy published with every release as template-policy.json (2026-10-09 approval, project-upgrade-button). minimum_supported is the oldest release MakeItOurs still accepts requests for (a release tag such as v0.1.0.40), or null for no gate: projects behind the latest release are asked to upgrade, and projects below minimum_supported must upgrade first. Raise it in a reviewed commit; the next release publishes it.",
+  "minimum_supported": null,
+  "message": "Upgrade this project to the latest MakeItOurs template to keep building and publishing."
+}

@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Write a release's identity into its archive tree and its upgrade policy beside it.
+
+Used by .github/workflows/release-template.yml (2026-10-09 approval,
+project-upgrade-button). Usage:
+
+  release-identity <archive tree> <tag> <commit> <policy output>
+
+writes <archive tree>/.makeitours/template-release.json (which release a project's
+infrastructure came from; copied into projects by Upgrade Project) and <policy output>
+(template-policy.json: the latest release and the minimum supported release, from
+.github/release-policy.json).
+"""
+
+from __future__ import annotations
+
+import json
+import pathlib
+import re
+import sys
+
+LOCK = "requirements/locks/dev-ubuntu-x86_64-py312.lock"
+TAG = re.compile(r"^v\d+(\.\d+){1,5}$")
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 5:
+        print(__doc__, file=sys.stderr)
+        return 64
+    tree, tag, commit, policy_output = pathlib.Path(argv[1]), argv[2], argv[3], pathlib.Path(argv[4])
+    if not TAG.match(tag) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        print("release-identity: invalid tag or commit", file=sys.stderr)
+        return 64
+    lock = (tree / LOCK).read_text()
+    pin = re.search(r"^python-cad-tools==(\S+)", lock, re.MULTILINE)
+    if not pin:
+        print(f"release-identity: no python-cad-tools pin in {LOCK}", file=sys.stderr)
+        return 65
+    identity = {"schema_version": 1, "release": tag, "commit": commit, "python_cad_tools": pin.group(1)}
+    target = tree / ".makeitours" / "template-release.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
+
+    source = json.loads((tree / ".github" / "release-policy.json").read_text())
+    minimum = source.get("minimum_supported")
+    if minimum is not None and not (isinstance(minimum, str) and TAG.match(minimum)):
+        print("release-identity: minimum_supported must be null or a release tag", file=sys.stderr)
+        return 65
+    policy = {
+        "schema_version": 1,
+        "latest": tag,
+        "python_cad_tools": pin.group(1),
+        "minimum_supported": minimum,
+        "message": str(source.get("message", "")),
+    }
+    policy_output.write_text(json.dumps(policy, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

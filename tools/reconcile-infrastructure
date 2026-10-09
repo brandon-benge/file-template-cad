@@ -18,7 +18,15 @@ design files present but not listed are appended (sorted), and other entries fol
 template. A project whose list already matches its files keeps it byte-for-byte. The app's
 InfrastructureReconciler applies the same rule.
 
-Usage: reconcile-infrastructure <path-to-file-template-cad-checkout>
+Usage: reconcile-infrastructure [--plan] [--source] <path-to-file-template-cad>
+
+  --plan    print the changes as JSON ({"schema_version": 1, "changes": [{"path", "action"}]},
+            action add | update | remove) and write nothing.
+  --source  the template is a plain directory (an extracted release archive), not a git
+            checkout: every file under it except generated/ and .makeitours/audit/ counts.
+
+Upgrades only (2026-10-09 approval, project-upgrade-button): MakeItOurs no longer runs this
+automatically; Upgrade Project runs it against a verified file-template-cad release.
 
 Run from the repository root. Invoked by makeitours-agentic-git-run (the makeitours.yml ticket
 runner) before the agent runs, so the AI works against an up-to-date template. Unlike the makeitours-app Mac
@@ -30,6 +38,7 @@ specrepo/requests/2026-09-01-cad-infrastructure-abstraction.md.
 
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import re
@@ -39,6 +48,9 @@ import sys
 import tomllib
 
 _CUSTOMER_TOP_LEVEL = {"config.py", "model.py", "drawing_annotations.py"}
+#: Written into each release archive by release-template.yml: which release a project's
+#: infrastructure came from (2026-10-09 approval, project-upgrade-button).
+RELEASE_IDENTITY = ".makeitours/template-release.json"
 
 
 def _is_customer_owned(relative_path: str) -> bool:
@@ -70,6 +82,20 @@ def _tracked_infrastructure(root: pathlib.Path) -> list[str]:
         for part in result.stdout.split(b"\x00")
         if part and _is_infrastructure(part.decode("utf-8"))
     ]
+
+
+def _walked_infrastructure(root: pathlib.Path) -> list[str]:
+    """Every regular file or symlink under a plain template directory (no git metadata)."""
+    found: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_dir() and not path.is_symlink():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if relative.startswith(".git/") or relative == ".git":
+            continue
+        if _is_infrastructure(relative):
+            found.append(relative)
+    return found
 
 
 def _remove(path: pathlib.Path) -> None:
@@ -127,76 +153,94 @@ def _reconciled_pyproject(template_text: str, project_text: str | None, repo: pa
     return template_text[: match.start()] + block + template_text[match.end() :]
 
 
-def _copy_pyproject(source: pathlib.Path, destination: pathlib.Path, repo: pathlib.Path) -> bool:
+def _desired_pyproject(source: pathlib.Path, destination: pathlib.Path, repo: pathlib.Path) -> str:
     project_text = destination.read_text() if destination.is_file() and not destination.is_symlink() else None
-    desired = _reconciled_pyproject(source.read_text(), project_text, repo)
-    if project_text == desired:
-        return False
-    if os.path.lexists(destination):
-        _remove(destination)
-    destination.write_text(desired)
-    shutil.copymode(source, destination)
-    return True
+    return _reconciled_pyproject(source.read_text(), project_text, repo)
 
 
-def _copy_from_template(source: pathlib.Path, destination: pathlib.Path) -> bool:
-    """Copy one entry, returning True when the destination actually changed."""
+def _action(source: pathlib.Path, destination: pathlib.Path, relative_path: str, repo: pathlib.Path) -> str | None:
+    """`add`, `update` or None (already equal) for one template entry."""
+    exists = os.path.lexists(destination)
     if source.is_symlink():
-        target = os.readlink(source)
-        if destination.is_symlink() and os.readlink(destination) == target:
-            return False
-        if os.path.lexists(destination):
-            _remove(destination)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        os.symlink(target, destination)
-        return True
+        if destination.is_symlink() and os.readlink(destination) == os.readlink(source):
+            return None
+        return "update" if exists else "add"
     if not source.is_file():
         # A gitlink/submodule or something else this reconciler has no opinion about.
-        return False
-    source_bytes = source.read_bytes()
-    if destination.is_file() and not destination.is_symlink() and destination.read_bytes() == source_bytes:
-        return False
-    if os.path.lexists(destination):
-        _remove(destination)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, destination)
-    shutil.copymode(source, destination)
-    return True
+        return None
+    if relative_path == "pyproject.toml":
+        desired = _desired_pyproject(source, destination, repo).encode()
+    else:
+        desired = source.read_bytes()
+    if destination.is_file() and not destination.is_symlink() and destination.read_bytes() == desired:
+        return None
+    return "update" if exists else "add"
+
+
+def plan(template: pathlib.Path, repo: pathlib.Path, *, source_tree: bool = False) -> list[dict[str, str]]:
+    """The changes that bring `repo`'s infrastructure to `template`, without writing anything."""
+    template_infra = _walked_infrastructure(template) if source_tree else _tracked_infrastructure(template)
+    template_set = set(template_infra)
+    changes: list[dict[str, str]] = []
+    for relative_path in template_infra:
+        action = _action(template / relative_path, repo / relative_path, relative_path, repo)
+        if action:
+            changes.append({"path": relative_path, "action": action})
+    for relative_path in _tracked_infrastructure(repo):
+        # The release identity exists only in release archives, never in a template checkout,
+        # so planning against a checkout must not delete it.
+        if relative_path == RELEASE_IDENTITY:
+            continue
+        if relative_path not in template_set and os.path.lexists(repo / relative_path):
+            changes.append({"path": relative_path, "action": "remove"})
+    return sorted(changes, key=lambda change: change["path"])
+
+
+def apply(template: pathlib.Path, repo: pathlib.Path, changes: list[dict[str, str]]) -> None:
+    for change in changes:
+        relative_path, target = change["path"], repo / change["path"]
+        if _is_customer_owned(relative_path):
+            raise RuntimeError(f"refusing to change a design file: {relative_path}")
+        if change["action"] == "remove":
+            _remove(target)
+            continue
+        source = template / relative_path
+        desired_pyproject = _desired_pyproject(source, target, repo) if relative_path == "pyproject.toml" else None
+        if os.path.lexists(target):
+            _remove(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_symlink():
+            os.symlink(os.readlink(source), target)
+        elif desired_pyproject is not None:
+            target.write_text(desired_pyproject)
+            shutil.copymode(source, target)
+        else:
+            shutil.copyfile(source, target)
+            shutil.copymode(source, target)
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
+    args = argv[1:]
+    dry_run = "--plan" in args
+    source_tree = "--source" in args
+    positional = [arg for arg in args if arg not in ("--plan", "--source")]
+    if len(positional) != 1 or any(arg.startswith("--") for arg in positional):
         print(__doc__, file=sys.stderr)
         return 64
-    template = pathlib.Path(argv[1]).resolve()
+    template = pathlib.Path(positional[0]).resolve()
     if not (template / "pyproject.toml").is_file():
-        print(f"Not a file-template-cad checkout: {template}", file=sys.stderr)
+        print(f"Not a file-template-cad checkout or release: {template}", file=sys.stderr)
         return 64
     repo = pathlib.Path.cwd()
 
-    template_infra = _tracked_infrastructure(template)
-    template_set = set(template_infra)
-    changed: list[str] = []
-
-    for relative_path in template_infra:
-        source = template / relative_path
-        if relative_path == "pyproject.toml" and source.is_file() and not source.is_symlink():
-            if _copy_pyproject(source, repo / relative_path, repo):
-                changed.append(relative_path)
-        elif _copy_from_template(source, repo / relative_path):
-            changed.append(relative_path)
-
-    for relative_path in _tracked_infrastructure(repo):
-        if relative_path in template_set:
-            continue
-        target = repo / relative_path
-        if os.path.lexists(target):
-            _remove(target)
-            changed.append(relative_path)
-
-    for relative_path in sorted(changed):
-        print(f"reconciled {relative_path}")
-    print(f"{len(changed)} infrastructure file(s) reconciled")
+    changes = plan(template, repo, source_tree=source_tree)
+    if dry_run:
+        print(json.dumps({"schema_version": 1, "changes": changes}, sort_keys=True))
+        return 0
+    apply(template, repo, changes)
+    for change in changes:
+        print(f"reconciled {change['path']}")
+    print(f"{len(changes)} infrastructure file(s) reconciled")
     return 0
 
 

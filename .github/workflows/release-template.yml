@@ -31,10 +31,20 @@ jobs:
           echo "tag=v${release_version}" >> "$GITHUB_OUTPUT"
 
       - name: Create deterministic template archive
+        # The archive also carries .makeitours/template-release.json (its own tag), and the
+        # release publishes template-policy.json beside it (2026-10-09 approval,
+        # project-upgrade-button). Repacked with sorted names, the commit's time and
+        # numeric owners, so the same commit and tag always give the same bytes.
         run: |
-          git archive --format=tar --prefix=file-template-cad/ HEAD \
-            | gzip -n > file-template-cad.tar.gz
+          rm -rf staging && mkdir staging
+          git archive --format=tar --prefix=file-template-cad/ HEAD | tar -x -C staging
+          python3 tools/release-identity staging/file-template-cad \
+            "${{ steps.version.outputs.tag }}" "${GITHUB_SHA}" template-policy.json
+          tar --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
+            --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime \
+            -C staging -cf - file-template-cad | gzip -n > file-template-cad.tar.gz
           sha256sum file-template-cad.tar.gz > file-template-cad.tar.gz.sha256
+          sha256sum template-policy.json > template-policy.json.sha256
 
       - name: Upload package for this workflow run
         uses: actions/upload-artifact@v4
@@ -43,6 +53,8 @@ jobs:
           path: |
             file-template-cad.tar.gz
             file-template-cad.tar.gz.sha256
+            template-policy.json
+            template-policy.json.sha256
           if-no-files-found: error
 
       - name: Create and push version tag
@@ -63,6 +75,8 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" \
             file-template-cad.tar.gz \
             file-template-cad.tar.gz.sha256 \
+            template-policy.json \
+            template-policy.json.sha256 \
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
             --generate-notes

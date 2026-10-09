@@ -17,6 +17,7 @@ tools/
 !tools/
 tools/*
 !tools/reconcile-infrastructure
+!tools/release-identity
 !tools/README.md
 viewer/
 backup/
