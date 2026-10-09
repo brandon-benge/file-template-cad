@@ -39,8 +39,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     container:
-      # makeitours-agentic v0.1.34. Updated only by a template commit (infrastructure reconcile).
-      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:75a338bcd6fae180835d10b44343426bacd8b2c53e6c1a1115f49857f6436da9
+      # makeitours-agentic v0.1.36. Updated only by a template commit.
+      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:2b2022a6181793dc65165562b4303ff35c4a088c35f8e358a7ea5f8caf0cb4b5
 
     steps:
       - name: Checkout repository
@@ -49,20 +49,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Fetch file-template-cad gold standard
-        shell: bash
-        # A shallow, anonymous clone of the public template outside the working tree; the runner
-        # reconciles this repository's infrastructure against it before the agent runs.
-        run: |
-          git clone --depth 1 https://github.com/brandon-benge/file-template-cad.git \
-            "$RUNNER_TEMP/file-template-cad-gold"
-
       - name: Run makeitours-agentic with repository audit
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
           MAKEITOURS_OPENCODE_MODEL: ${{ vars.MAKEITOURS_OPENCODE_MODEL }}
-          MAKEITOURS_CAD_TEMPLATE_CHECKOUT: ${{ runner.temp }}/file-template-cad-gold
           MAKEITOURS_FAILURE_ARTIFACT_DIR: ${{ runner.temp }}/makeitours-failure-artifacts
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

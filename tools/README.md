@@ -15,8 +15,7 @@ automatic; a sister repo can carry an extra script here until it's rerun.
   and writes nothing. Never touches the four customer-owned CAD-authoring
   paths, `generated/` or `.makeitours/audit/`, and never removes the release
   identity. Upgrade Project runs it (2026-10-09 approval,
-  project-upgrade-button); nothing runs it automatically any more, and the
-  ticket runner stops calling it once its next release ships.
+  project-upgrade-button); nothing runs it automatically.
 - **`release-identity <archive tree> <tag> <commit> <policy output>`** —
   used by `release-template.yml`: writes `.makeitours/template-release.json`
   (the release a project's infrastructure came from) into the archive, and

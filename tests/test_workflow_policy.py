@@ -290,16 +290,13 @@ def test_python_cad_tools_version_selection_is_fully_removed():
         assert "MAKEITOURS_PYTHON_CAD_TOOLS_VERSION" not in workflow.read_text(), workflow.name
 
 
-def test_makeitours_workflow_reconciles_infrastructure_before_running():
-    """Every triggered run reconciles this repo's infrastructure against file-template-cad's live
-    committed content before the agent runs, so a phone-initiated change never leaves
-    infrastructure drifted. The runner (makeitours-agentic-git-run) commits the result as its own
-    commit before the transaction starts; its tests live in makeitours-agentic."""
+def test_makeitours_workflow_does_not_reconcile_infrastructure_automatically():
+    """Infrastructure changes only through the explicit Upgrade Project operation."""
     workflow = MAKEITOURS_WORKFLOW.read_text()
     reconciler = PROJECT_ROOT / "tools" / "reconcile-infrastructure"
-    assert "git clone --depth 1 https://github.com/brandon-benge/file-template-cad.git" in workflow
-    assert "MAKEITOURS_CAD_TEMPLATE_CHECKOUT: ${{ runner.temp }}/file-template-cad-gold" in workflow
-    assert workflow.index("file-template-cad-gold") < workflow.index("run: makeitours-agentic-git-run")
+    assert "git clone --depth 1 https://github.com/brandon-benge/file-template-cad.git" not in workflow
+    assert "MAKEITOURS_CAD_TEMPLATE_CHECKOUT" not in workflow
+    assert "run: makeitours-agentic-git-run" in workflow
     assert reconciler.is_file()
 
     # The reconciler never touches the four customer-owned paths, generated/,

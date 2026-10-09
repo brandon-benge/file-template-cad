@@ -28,12 +28,8 @@ Usage: reconcile-infrastructure [--plan] [--source] <path-to-file-template-cad>
 Upgrades only (2026-10-09 approval, project-upgrade-button): MakeItOurs no longer runs this
 automatically; Upgrade Project runs it against a verified file-template-cad release.
 
-Run from the repository root. Invoked by makeitours-agentic-git-run (the makeitours.yml ticket
-runner) before the agent runs, so the AI works against an up-to-date template. Unlike the makeitours-app Mac
-client (which vendors a snapshot to avoid a Guideline 2.5.2 risk in a sandboxed,
-App-Store-distributed binary), this is developer-controlled CI and reconciles against the
-template's live committed content -- see
-specrepo/requests/2026-09-01-cad-infrastructure-abstraction.md.
+Run from the repository root. Upgrade Project invokes this tool against a verified
+release archive; the ticket runner does not reconcile automatically.
 """
 
 from __future__ import annotations
