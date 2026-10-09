@@ -77,7 +77,8 @@ def test_applying_the_plan_leaves_nothing_to_do_and_design_files_untouched(tmp_p
     design = {
         path: content
         for path, content in case["project"].items()
-        if path in ("config.py", "model.py", "drawing_annotations.py") or (path.startswith("models/") and path.endswith(".py"))
+        if path in ("config.py", "model.py", "drawing_annotations.py")
+        or (path.startswith("models/") and path.endswith(".py"))
     }
 
     _run(project, release, "--source")
@@ -91,7 +92,19 @@ def test_applying_the_plan_leaves_nothing_to_do_and_design_files_untouched(tmp_p
     # Commit the applied tree (as an upgrade would), then nothing is left to plan.
     subprocess.run(["git", "-C", str(project), "add", "-A", "-f"], check=True)
     subprocess.run(
-        ["git", "-C", str(project), "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "upgrade", "--allow-empty"],
+        [
+            "git",
+            "-C",
+            str(project),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-qm",
+            "upgrade",
+            "--allow-empty",
+        ],
         check=True,
     )
     assert json.loads(_run(project, release, "--plan", "--source").stdout)["changes"] == []
