@@ -85,6 +85,7 @@ def test_makeitours_workflow_sources_model_and_keys_from_the_app_settings():
     workflow = MAKEITOURS_WORKFLOW.read_text()
     assert "glm-5.2" not in workflow
     assert "MAKEITOURS_OPENCODE_MODEL: ${{ vars.MAKEITOURS_OPENCODE_MODEL }}" in workflow
+    assert "MAKEITOURS_AGENT_MODELS: ${{ vars.MAKEITOURS_AGENT_MODELS }}" in workflow
     for name in [
         "OPENCODE_API_KEY",
         "OPENAI_API_KEY",
