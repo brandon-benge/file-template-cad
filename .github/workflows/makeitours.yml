@@ -39,8 +39,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     container:
-      # makeitours-agentic v0.1.36. Updated only by a template commit.
-      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:2b2022a6181793dc65165562b4303ff35c4a088c35f8e358a7ea5f8caf0cb4b5
+      # makeitours-agentic v0.1.42. Updated only by a template commit.
+      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:635a96e02e88829ffd58760c17d368527c0b780449c406c0c1bbbe2316d6d66c
 
     steps:
       - name: Checkout repository
@@ -54,6 +54,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           MAKEITOURS_OPENCODE_MODEL: ${{ vars.MAKEITOURS_OPENCODE_MODEL }}
+          # Per-agent models chosen in the MakeItOurs app (JSON; empty: every agent uses the model above).
+          MAKEITOURS_AGENT_MODELS: ${{ vars.MAKEITOURS_AGENT_MODELS }}
           MAKEITOURS_FAILURE_ARTIFACT_DIR: ${{ runner.temp }}/makeitours-failure-artifacts
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
