@@ -67,26 +67,19 @@ jobs:
           name: dev-lock-${{ matrix.os }}-${{ matrix.python-version }}
           path: ${{ steps.lock.outputs.lock_path }}
 
-  static-analysis:
+  # Static analysis, the dependency boundary and the fast tests share one
+  # install of the committed Linux dev lock (locked-install above proves the
+  # lock still regenerates). The build, determinism and browser tests stay in
+  # end-to-end.yml (test-cost-reduction, 2026-10-12).
+  checks:
     runs-on: ubuntu-24.04
+    outputs:
+      python_cad_tools_version: ${{ steps.dependency_boundary.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install pip-tools
-        run: |
-          # pip-tools' pip-compile transitively imports pip._internal internals
-          # that pip 26.2 removed (jazzband/pip-tools#2436, fixed post-7.6.0 but
-          # not yet released to PyPI). Pin pip below the break until a pip-tools
-          # release includes the fix.
-          pip install "pip<26.2"
-          pip install pip-tools
-      - name: Generate dev lock
-        run: |
-          pip-compile --extra=dev --generate-hashes \
-            --output-file=requirements/locks/dev-ubuntu-x86_64-py313.lock \
-            pyproject.toml
       - name: Install dev lock
         run: |
           pip install --require-hashes -r requirements/locks/dev-ubuntu-x86_64-py313.lock
@@ -97,33 +90,8 @@ jobs:
         run: ruff format --check config.py model.py models/ drawing_annotations.py tests/
       - name: Mypy
         run: mypy config.py model.py models/ drawing_annotations.py tests/
-
-  boundary-governance:
-    runs-on: ubuntu-24.04
-    outputs:
-      python_cad_tools_version: ${{ steps.dependency_boundary.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - name: Install pip-tools
-        run: |
-          # pip-tools' pip-compile transitively imports pip._internal internals
-          # that pip 26.2 removed (jazzband/pip-tools#2436, fixed post-7.6.0 but
-          # not yet released to PyPI). Pin pip below the break until a pip-tools
-          # release includes the fix.
-          pip install "pip<26.2"
-          pip install pip-tools
-      - name: Generate dev lock
-        run: |
-          pip-compile --extra=dev --generate-hashes \
-            --output-file=requirements/locks/dev-ubuntu-x86_64-py313.lock \
-            pyproject.toml
-      - name: Install dev lock
-        run: |
-          pip install --require-hashes -r requirements/locks/dev-ubuntu-x86_64-py313.lock
-          pip check
+      - name: Fast tests (workflow policy, release identity, reconcile)
+        run: python -m pytest -m "not integration and not viewer and not e2e"
       - name: Dependency boundary check
         id: dependency_boundary
         run: |
@@ -154,8 +122,7 @@ jobs:
   compatibility-report:
     needs:
       - locked-install
-      - static-analysis
-      - boundary-governance
+      - checks
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -166,7 +133,7 @@ jobs:
           {
             "plan_contract": "repo-split-v1",
             "design_revision": "${{ github.sha }}",
-            "python_cad_tools_version": "${{ needs.boundary-governance.outputs.python_cad_tools_version }}",
+            "python_cad_tools_version": "${{ needs.checks.outputs.python_cad_tools_version }}",
             "workflow_run_id": "${{ github.run_id }}",
             "status": "completed",
             "date": "${{ github.event.repository.updated_at }}"
