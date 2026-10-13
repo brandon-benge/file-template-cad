@@ -210,8 +210,8 @@ sessions, GitHub-triggered requests, and CI (`ci.yml`) all have the
 project's `ruff`/`mypy`/`pytest`/`python-cad` available. Run the applicable
 tier's checks once, after finishing every edit the request requires — not
 after each individual edit, and not repeatedly while iterating. `ruff` and
-`mypy` also run in `ci.yml` on every push; `pytest` and `python-cad` also run
-in the E2E, pages, and rebuild workflows; MakeItOurs's own build step also runs
+`mypy` (and the fast policy tests) also run in `ci.yml` on every push; the
+build tests and `python-cad` also run in the E2E, pages, and rebuild workflows; MakeItOurs's own build step also runs
 `python-cad validate`/`build` immediately after a local session finishes.
 Your one end-of-session pass exists to catch and fix problems before those
 run, not to replace or duplicate them.

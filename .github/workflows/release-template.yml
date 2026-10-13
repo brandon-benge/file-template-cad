@@ -1,7 +1,16 @@
 name: Package and release File Template CAD
 
+# Releases a commit on main only after CI passed on it (test-cost-reduction,
+# 2026-10-12): before, every push to any branch released, even with CI red,
+# and pushes that weren't meant to release needed "[skip ci]". A "[skip ci]"
+# push now skips CI and so also the release. A manual dispatch (the hosted
+# runner dispatches this workflow after its own push) releases the
+# dispatched ref as before.
 on:
-  push:
+  workflow_run:
+    workflows: ["File Template CAD CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -9,10 +18,17 @@ permissions:
 
 jobs:
   package:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
+          # The commit CI passed on (a workflow_run's own SHA is main's latest).
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - name: Determine release version
@@ -39,7 +55,7 @@ jobs:
           rm -rf staging && mkdir staging
           git archive --format=tar --prefix=file-template-cad/ HEAD | tar -x -C staging
           python3 tools/release-identity staging/file-template-cad \
-            "${{ steps.version.outputs.tag }}" "${GITHUB_SHA}" template-policy.json
+            "${{ steps.version.outputs.tag }}" "$(git rev-parse HEAD)" template-policy.json
           tar --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
             --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime \
             -C staging -cf - file-template-cad | gzip -n > file-template-cad.tar.gz
