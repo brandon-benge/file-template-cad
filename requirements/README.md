@@ -25,7 +25,9 @@ every pin equals the version installed in the released
 with `--upgrade-package=python-cad-tools==0.1.17` for the MakeItOurs viewer
 branding update; all other package pins were preserved. On 2026-10-08 all four
 locks were regenerated the same way with `--upgrade-package=python-cad-tools==0.1.18`
-(curved solids pass the IFC bounds check); all other pins were preserved. The matching sandbox
+(curved solids pass the IFC bounds check); all other pins were preserved. On 2026-10-19
+all four moved to `python-cad-tools==0.1.19` (one-line docstrings for every public helper; same
+dependencies) by replacing only its pin and wheel/sdist hashes from PyPI. The matching sandbox
 image must consume this released lock before hosted builds use it. To regenerate:
 export the image's versions (`docker run --platform linux/amd64 <image> pip
 list --format=freeze`, minus `pip`, `setuptools`, `wheel` and

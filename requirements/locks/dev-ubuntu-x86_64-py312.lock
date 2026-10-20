@@ -1165,9 +1165,9 @@ pytest-xdist==3.8.0 \
     --hash=sha256:202ca578cfeb7370784a8c33d6d05bc6e13b4f25b5053c30a152269fd10f0b88 \
     --hash=sha256:7e578125ec9bc6050861aa93f2d59f1d8d085595d6551c2c90b6f4fad8d3a9f1
     # via file-template-cad (pyproject.toml)
-python-cad-tools==0.1.18 \
-    --hash=sha256:6a24749d2e3686ab2d07f205a4a21d7341068b89ce830218310963ceb5adc0ce \
-    --hash=sha256:c8f93fc328938bcc9e4b0c3d4d10a259cebd76d00382d7f2c1796c9ef88249b2
+python-cad-tools==0.1.19 \
+    --hash=sha256:810a63e503985c360406ee535736d7f855c9e855a608d9f09d5327e8c427ef3f \
+    --hash=sha256:c1e6ace5df16b0b3b4af3e025ec1b3eedd6024dc8caad550a2eaabb4d4835f25
     # via file-template-cad (pyproject.toml)
 python-dateutil==2.9.0.post0 \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
