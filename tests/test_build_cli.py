@@ -1,8 +1,8 @@
 """Section 12.5: CLI end-to-end.
 
-CLI tests use a shared module-scoped step-only build. With pytest-xdist
---dist loadscope, this file runs on one worker in parallel with other
-build test files.
+The build tests read the session's shared CLI build (conftest.py), made with
+repeated --format flags in a path containing spaces; `clean` runs on a copy of
+it, so no test here builds the model again.
 """
 
 from __future__ import annotations
@@ -10,31 +10,20 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from conftest import _cli, _copy_project
+from conftest import _cli, copy_built_project
 
 pytestmark = [pytest.mark.integration]
 
 
-@pytest.fixture(scope="module")
-def cli_built_project(tmp_path_factory: pytest.TempPathFactory, repo_root: Path) -> Path:
-    """CLI build with step only, created once for this module."""
-    dest = tmp_path_factory.mktemp("cli_project")
-    _copy_project(repo_root, dest)
-    result = _cli("build", "--format", "step", cwd=dest)
-    assert result.returncode == 0, f"CLI build failed: stderr={result.stderr}"
-    return dest
+def test_cli_build_from_root(cli_step_ifc_project, identity) -> None:
+    """CLI build run from the project root."""
+    assert (cli_step_ifc_project / "generated" / "step" / f"{identity.stem}.step").is_file()
 
 
-def test_cli_build_from_root(cli_built_project, identity) -> None:
-    """CLI build (step-only, shared fixture)."""
-    assert (cli_built_project / "generated" / "step" / f"{identity.stem}.step").is_file()
-
-
-def test_cli_build_from_path_with_spaces(copied_project_with_spaces, identity) -> None:
-    """CLI build in a path containing spaces (own build, step-only)."""
-    result = _cli("build", "--format", "step", cwd=copied_project_with_spaces)
-    assert result.returncode == 0, f"CLI build failed in path with spaces: {result.stderr}"
-    assert (copied_project_with_spaces / "generated" / "step" / f"{identity.stem}.step").is_file()
+def test_cli_build_from_path_with_spaces(cli_step_ifc_project, identity) -> None:
+    """The shared CLI build ran in a path containing spaces."""
+    assert " " in str(cli_step_ifc_project)
+    assert (cli_step_ifc_project / "generated" / "step" / f"{identity.stem}.step").is_file()
 
 
 def test_cli_validate(copied_project) -> None:
@@ -44,10 +33,10 @@ def test_cli_validate(copied_project) -> None:
     assert '"status":"ok"' in result.stdout
 
 
-def test_cli_clean(copied_project, identity) -> None:
-    """CLI build (step-only) then clean on a fresh project copy."""
-    _cli("build", "--format", "step", cwd=copied_project)
-    assert (copied_project / "generated" / "step" / f"{identity.stem}.step").is_file()
-    result = _cli("clean", cwd=copied_project)
+def test_cli_clean(cli_step_ifc_project, tmp_path: Path, identity) -> None:
+    """CLI clean removes a built project's generated output (on a copy of the shared build)."""
+    project = copy_built_project(cli_step_ifc_project, tmp_path / "built copy")
+    assert (project / "generated" / "step" / f"{identity.stem}.step").is_file()
+    result = _cli("clean", cwd=project)
     assert result.returncode == 0, f"CLI clean failed: {result.stderr}"
-    assert not (copied_project / "generated" / "step").exists()
+    assert not (project / "generated" / "step").exists()

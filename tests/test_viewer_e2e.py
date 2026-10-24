@@ -49,7 +49,6 @@ def _read_stdout(proc: subprocess.Popen) -> str:
 
 @pytest.fixture(scope="module")
 def prepared_site(session_project, tmp_path_factory):
-    _build(session_project)
     dest = tmp_path_factory.mktemp("site")
     site = prepare_site(session_project, dest)
     return site, dest
@@ -57,7 +56,6 @@ def prepared_site(session_project, tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def server_process(session_project, tmp_path_factory):
-    _build(session_project)
     dest = tmp_path_factory.mktemp("serve-site")
     prepare_site(session_project, dest)
     proc = subprocess.Popen(
@@ -85,57 +83,54 @@ def server_process(session_project, tmp_path_factory):
 
 
 # ── 12.8.1 Site preparation ─────────────────────────────────────────────────
+#
+# These read the session's shared full build (conftest.py) and write only to
+# their own destination, so none of them builds the model again.
 
 
-def test_prepare_site_node_unavailable(copied_project, tmp_path, identity) -> None:
-    _build(copied_project)
-    assert not (copied_project / "viewer").exists() or not any((copied_project / "viewer").glob("*"))
+def test_prepare_site_node_unavailable(session_project, tmp_path, identity) -> None:
+    assert not (session_project / "viewer").exists() or not any((session_project / "viewer").glob("*"))
     assert "node" not in os.environ.get("PATH", "").lower() or True
     dest = tmp_path / "site"
-    site = prepare_site(copied_project, dest)
+    site = prepare_site(session_project, dest)
     assert site.project_id == identity.model_id
     assert site.file_count > 0
     assert len(site.design_build_hash) == 64
 
 
-def test_prepare_site_design_build_hash(copied_project, tmp_path) -> None:
-    _build(copied_project)
+def test_prepare_site_design_build_hash(session_project, tmp_path) -> None:
     dest = tmp_path / "site"
-    site = prepare_site(copied_project, dest)
-    build_manifest = json.loads((copied_project / "generated" / "manifests" / "build-manifest.json").read_text())
+    site = prepare_site(session_project, dest)
+    build_manifest = json.loads((session_project / "generated" / "manifests" / "build-manifest.json").read_text())
     assert site.design_build_hash == build_manifest["stable_artifact_set_hash"]
 
 
-def test_prepare_site_empty_destination(copied_project, tmp_path) -> None:
-    _build(copied_project)
+def test_prepare_site_empty_destination(session_project, tmp_path) -> None:
     dest = tmp_path / "empty-site"
-    site = prepare_site(copied_project, dest)
+    site = prepare_site(session_project, dest)
     assert site.destination == dest
     assert dest.exists()
     assert (dest / "index.html").is_file()
 
 
-def test_prepare_site_nonempty_unmarked_fails(copied_project, tmp_path) -> None:
-    _build(copied_project)
+def test_prepare_site_nonempty_unmarked_fails(session_project, tmp_path) -> None:
     dest = tmp_path / "nonempty"
     dest.mkdir()
     (dest / "some-file.txt").write_text("data")
     with pytest.raises(UnsafePathError):
-        prepare_site(copied_project, dest)
+        prepare_site(session_project, dest)
 
 
-def test_prepare_site_base_path_root(copied_project, tmp_path) -> None:
-    _build(copied_project)
+def test_prepare_site_base_path_root(session_project, tmp_path) -> None:
     dest = tmp_path / "site-root"
-    site = prepare_site(copied_project, dest, base_path="/")
+    site = prepare_site(session_project, dest, base_path="/")
     assert site.base_path == "/"
     assert (dest / "index.html").is_file()
 
 
-def test_prepare_site_base_path_file_template_cad(copied_project, tmp_path) -> None:
-    _build(copied_project)
+def test_prepare_site_base_path_file_template_cad(session_project, tmp_path) -> None:
     dest = tmp_path / "site-file"
-    site = prepare_site(copied_project, dest, base_path="/file-template-cad/")
+    site = prepare_site(session_project, dest, base_path="/file-template-cad/")
     assert site.base_path == "/file-template-cad/"
     assert (dest / "index.html").is_file()
 

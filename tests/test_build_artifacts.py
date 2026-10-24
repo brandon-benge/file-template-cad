@@ -1,8 +1,7 @@
 """Sections 12.4, 12.6: Programmatic build and final artifact reconciliation.
 
-All tests share a single module-scoped full-format build (~85 s setup).
-With pytest-xdist --dist loadscope, this file runs on one worker in parallel
-with other build test files.
+All tests share the session's full-format build (conftest.py), which the viewer
+tests read too.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from build123d import import_step
 from conftest import _cli
 from ezdxf.filemanagement import readfile
 from pypdf import PdfReader
-from python_cad_tools.build import BuildOptions, BuildResult, ValidationOptions, build_project, validate_project
+from python_cad_tools.build import BuildResult, ValidationOptions, validate_project
 
 pytestmark = [pytest.mark.integration]
 
@@ -27,13 +26,9 @@ pytestmark = [pytest.mark.integration]
 
 
 @pytest.fixture(scope="module")
-def build_result(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> BuildResult:
-    """Full-format build, created once for this module."""
-    dest = tmp_path_factory.mktemp("artifacts_build")
-    from conftest import _copy_project
-
-    _copy_project(repo_root, dest)
-    return build_project(BuildOptions(project_root=dest))
+def build_result(full_build) -> BuildResult:
+    """The session's shared full-format build (conftest.py)."""
+    return full_build.result
 
 
 @pytest.fixture(scope="module")

@@ -1,9 +1,8 @@
 """Section 12.7: Determinism between two independent builds.
 
-Both builds use step+ifc (Option 6b). Full-format determinism for GLB,
-drawings, and quantities is covered by test_build_artifacts.py (single-build
-consistency). With pytest-xdist --dist loadscope, this file runs on one worker
-in parallel with other build test files (~104 s).
+Both builds use step+ifc (Option 6b): the session's shared CLI and API builds
+(conftest.py). Full-format determinism for GLB, drawings, and quantities is
+covered by test_build_artifacts.py (single-build consistency).
 """
 
 from __future__ import annotations
@@ -13,8 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from conftest import _copy_project
-from python_cad_tools.build import BuildOptions, build_project
 from python_cad_tools.determinism import semantic_hash
 
 pytestmark = [pytest.mark.integration]
@@ -28,35 +25,25 @@ class TwoBuilds:
     manifest2: dict
 
 
-FORMATS: tuple[str, ...] = ("step", "ifc")
-
-
 def _load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
-def two_builds(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> TwoBuilds:
-    """Two independent step+ifc builds for determinism comparison.
+def two_builds(cli_step_ifc_project: Path, api_step_ifc_project: Path) -> TwoBuilds:
+    """Two independent clean step+ifc builds: the shared CLI build and the shared API build.
 
-    Creates two clean project copies and builds each with the same format
-    set (step+ifc) so artifact manifests are directly comparable.
+    Each comes from its own clean project copy; comparing a CLI build with an API build
+    also shows the two entry points produce the same artifacts.
     """
-    # First build
-    first_copy = tmp_path_factory.mktemp("determinism_first")
-    _copy_project(repo_root, first_copy)
-    build_project(BuildOptions(project_root=first_copy, formats=FORMATS))  # type: ignore[arg-type]
-    output1 = first_copy / "generated"
-    manifest1 = _load_json(output1 / "manifests" / "build-manifest.json")
-
-    # Second build
-    second_copy = tmp_path_factory.mktemp("determinism_second")
-    _copy_project(repo_root, second_copy)
-    build_project(BuildOptions(project_root=second_copy, formats=FORMATS))  # type: ignore[arg-type]
-    output2 = second_copy / "generated"
-    manifest2 = _load_json(output2 / "manifests" / "build-manifest.json")
-
-    return TwoBuilds(output1=output1, manifest1=manifest1, output2=output2, manifest2=manifest2)
+    output1 = cli_step_ifc_project / "generated"
+    output2 = api_step_ifc_project / "generated"
+    return TwoBuilds(
+        output1=output1,
+        manifest1=_load_json(output1 / "manifests" / "build-manifest.json"),
+        output2=output2,
+        manifest2=_load_json(output2 / "manifests" / "build-manifest.json"),
+    )
 
 
 # ── 12.7 Failure rollback/recovery and determinism ──────────────────────────
