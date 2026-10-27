@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from build123d import Cone, Plane, Polyline, Sphere, extrude, make_face
+from build123d import Cone, Location, Plane, Polyline, Sphere, extrude, make_face
 from python_cad_tools.context import BuildContext
 from python_cad_tools.elements import DesignElement, DesignModel, Dimensions, IfcMapping, MaterialSpec, Placement
 from python_cad_tools.geometry import box, cylinder_between, prism_between, sloped_pool
@@ -45,6 +45,12 @@ def build_model(context: BuildContext) -> DesignModel:
        through geometry code.
     2. Build geometry with public ``build123d`` and ``python_cad_tools``
        helpers.  Keep datums and coordinate-system assumptions explicit.
+       Build every solid where it belongs in world coordinates:
+       ``box(..., origin=...)`` (the minimum corner), ``prism_between`` and
+       ``cylinder_between`` with world points, or ``shape.moved(Location(...))``.
+       ``Placement`` only records a position and never moves geometry, so a
+       part built at the origin stays there in every export, and
+       ``python-cad validate`` rejects it.
     3. Create one ``DesignElement`` for each stable semantic object.  Use clear,
        generic category names and never derive identity from list order.
     4. Mark reference/nonphysical elements intentionally and map physical
@@ -65,7 +71,8 @@ def build_model(context: BuildContext) -> DesignModel:
             id="template.starter.element",
             name="Starter Element",
             category="template",
-            geometry=box(cfg.STARTER_SIZE, cfg.STARTER_SIZE, cfg.STARTER_SIZE),
+            # Built in place: ``origin`` is the box's minimum corner in world millimetres.
+            geometry=box(cfg.STARTER_SIZE, cfg.STARTER_SIZE, cfg.STARTER_SIZE, origin=(mm(0), mm(0), mm(0))),
             geometry_kind="solid",
             dimensions=Dimensions(
                 length_mm=starter_size_mm,
