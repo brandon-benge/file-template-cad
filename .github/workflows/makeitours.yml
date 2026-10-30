@@ -56,6 +56,9 @@ jobs:
           MAKEITOURS_OPENCODE_MODEL: ${{ vars.MAKEITOURS_OPENCODE_MODEL }}
           # Per-agent models chosen in the MakeItOurs app (JSON; empty: every agent uses the model above).
           MAKEITOURS_AGENT_MODELS: ${{ vars.MAKEITOURS_AGENT_MODELS }}
+          # Turn limits, recovery, output limits and prompts chosen in the MakeItOurs app (JSON;
+          # empty: built-in defaults). Read by makeitours-agentic releases after v0.1.50.
+          MAKEITOURS_AGENT_SETTINGS: ${{ vars.MAKEITOURS_AGENT_SETTINGS }}
           MAKEITOURS_FAILURE_ARTIFACT_DIR: ${{ runner.temp }}/makeitours-failure-artifacts
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
