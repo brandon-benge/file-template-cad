@@ -39,8 +39,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     container:
-      # makeitours-agentic v0.1.50. Updated only by a template commit.
-      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:15a4e066b94d1b85886dcfeffc0d52b0dc7a49ee8ada7d30b66e1465d4393a43
+      # makeitours-agentic v0.1.78. Updated only by a template commit.
+      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:a8c343766aac65c9d4b23b6e1d5f2f40509eb186fd51821d0f7c57c57ebb67c8
 
     steps:
       - name: Checkout repository
@@ -57,7 +57,7 @@ jobs:
           # Per-agent models chosen in the MakeItOurs app (JSON; empty: every agent uses the model above).
           MAKEITOURS_AGENT_MODELS: ${{ vars.MAKEITOURS_AGENT_MODELS }}
           # Turn limits, recovery, output limits and prompts chosen in the MakeItOurs app (JSON;
-          # empty: built-in defaults). Read by makeitours-agentic releases after v0.1.50.
+          # empty: built-in defaults). Read by makeitours-agentic v0.1.78 and later.
           MAKEITOURS_AGENT_SETTINGS: ${{ vars.MAKEITOURS_AGENT_SETTINGS }}
           MAKEITOURS_FAILURE_ARTIFACT_DIR: ${{ runner.temp }}/makeitours-failure-artifacts
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
