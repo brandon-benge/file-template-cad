@@ -1,0 +1,46 @@
+name: makeitours-outcome
+
+# 2026-10-30 (data-plane#249): a MakeItOurs ticket pushes its change to main before CI, the
+# release and the site deploy run, so a saved change can fail to go live. When one of them
+# finishes on main, reply once on the change's issue: live with its version, or saved but not
+# published with the failing check (makeitours-agentic-git-run outcome, in the same pinned image
+# as makeitours.yml). The next ticket is told the same from GitHub's own results.
+on:
+  workflow_run:
+    workflows:
+      - "File Template CAD CI"
+      - "Package and release File Template CAD"
+      - "Deploy File Template CAD viewer"
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: makeitours-outcome-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  outcome:
+    name: Report the MakeItOurs outcome
+    if: github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    container:
+      # makeitours-agentic v0.1.81. Updated only by a template commit.
+      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:75e3d26ac94d22d654c6a05f784beba54325cdfa9c555868ea9b51dabba3bbe6
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reply on the change's issue
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: makeitours-agentic-git-run outcome
