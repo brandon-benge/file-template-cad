@@ -39,8 +39,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     container:
-      # makeitours-agentic v0.1.79. Updated only by a template commit.
-      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:fd34b275eee276c0d949dba06a0139787f32a7aa5ecc633e58e872e187d4fef0
+      # makeitours-agentic v0.1.81. Updated only by a template commit.
+      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:75e3d26ac94d22d654c6a05f784beba54325cdfa9c555868ea9b51dabba3bbe6
 
     steps:
       - name: Checkout repository

@@ -124,6 +124,13 @@ Actions variable (a `providerID/modelID` reference such as `opencode-go/glm-5.2`
 split at the first slash, so the model may itself contain one, as OpenRouter's
 `openrouter/deepseek/deepseek-flash-latest` does) and the selected provider's
 API-key secret. Calls go directly to that provider; no model gateway is used.
+
+An accepted run pushes its change to `main` before CI, the release and the site deploy run,
+so its first issue comment says the change is saved and being checked, and the issue stays
+open. `.github/workflows/makeitours-outcome.yml` replies once those finish: "Live now as vN"
+(and closes the issue), or "Saved but not published" with the failing check and a suggested
+`/mio` fix. The next request is told when `main` holds saved but unpublished work, from
+GitHub's own check results.
 The runner validates the reference and requires the provider's credential
 before the agent starts, failing fast with a diagnostic artifact and an issue
 comment rather than falling back to another model. Every run ends with a
