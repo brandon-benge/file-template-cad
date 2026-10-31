@@ -126,12 +126,16 @@ def test_outcome_workflow_reports_each_downstream_result_from_the_same_runner_im
     text = OUTCOME_WORKFLOW.read_text()
     image = RUNNER_IMAGE.search(text)
     assert image, "the runner image must be pinned by sha256 digest"
-    assert image.group(0) == RUNNER_IMAGE.search(MAKEITOURS_WORKFLOW.read_text()).group(0)
+    ticket_image = RUNNER_IMAGE.search(MAKEITOURS_WORKFLOW.read_text())
+    assert ticket_image, "the ticket workflow's runner image must be pinned by sha256 digest"
+    assert image.group(0) == ticket_image.group(0)
     assert "run: makeitours-agentic-git-run outcome" in text
     assert "workflow_run:" in text and "types: [completed]" in text and "branches: [main]" in text
     workflows = PROJECT_ROOT / ".github" / "workflows"
     for name in ["ci.yml", "release-template.yml", "pages.yml"]:
-        title = re.search(r"^name: (.+)$", (workflows / name).read_text(), re.MULTILINE).group(1).strip()
+        name_line = re.search(r"^name: (.+)$", (workflows / name).read_text(), re.MULTILINE)
+        assert name_line, f"{name} has no name"
+        title = name_line.group(1).strip()
         assert f'"{title}"' in text, f"{name} ({title}) is not watched"
     assert "head_repository.full_name == github.repository" in text
 
