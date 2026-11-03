@@ -140,6 +140,28 @@ def test_outcome_workflow_reports_each_downstream_result_from_the_same_runner_im
     assert "head_repository.full_name == github.repository" in text
 
 
+def test_ticket_runs_start_the_deploy_and_report_their_outcome():
+    """2026-11-03 (benge-property-cad#26): a ticket dispatches CI and the release with the job's
+    token, and such runs fire no workflow_run event. CI starts the deploy itself, and CI, the
+    release and the deploy each report their result to the outcome workflow."""
+    workflows = PROJECT_ROOT / ".github" / "workflows"
+    ci = (workflows / "ci.yml").read_text()
+    assert "ticket-downstream:" in ci
+    assert "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'" in ci
+    assert 'gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main -f head_sha="$HEAD_SHA"' in ci
+    pages = (workflows / "pages.yml").read_text()
+    assert "workflow_dispatch:" in pages and "head_sha:" in pages
+    assert "ref: ${{ github.event.workflow_run.head_sha || inputs.head_sha }}" in pages
+    for name, workflow in [("ci.yml", ci), ("pages.yml", pages), ("release-template.yml", (workflows / "release-template.yml").read_text())]:
+        assert f"-f workflow={name}" in workflow, name
+        assert "gh workflow run makeitours-outcome.yml" in workflow, name
+        assert "actions: write" in workflow, name
+    outcome = OUTCOME_WORKFLOW.read_text()
+    for field in ["workflow:", "head_sha:", "conclusion:", "run_id:"]:
+        assert field in outcome, field
+    assert "github.event_name == 'workflow_dispatch' ||" in outcome
+
+
 def test_outcome_workflow_permissions_are_bounded():
     text = OUTCOME_WORKFLOW.read_text()
     assert "contents: read" in text and "issues: write" in text and "actions: read" in text

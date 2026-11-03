@@ -6,6 +6,12 @@ on:
     types:
       - completed
     branches: [main]
+  # 2026-11-03: CI starts the deploy itself after a MakeItOurs ticket (see ci.yml ticket-downstream).
+  workflow_dispatch:
+    inputs:
+      head_sha:
+        description: The commit on main that CI passed
+        required: true
 
 permissions:
   contents: read
@@ -20,8 +26,9 @@ env:
 jobs:
   deploy:
     if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     environment:
       name: github-pages
@@ -32,10 +39,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || inputs.head_sha }}
       - name: Verify commit SHA
         run: |
-          test "$(git rev-parse HEAD)" = "${{ github.event.workflow_run.head_sha }}"
+          test "$(git rev-parse HEAD)" = "${{ github.event.workflow_run.head_sha || inputs.head_sha }}"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -59,3 +66,25 @@ jobs:
           path: site
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # A deploy CI started after a MakeItOurs ticket reports its result to makeitours-outcome.yml.
+  ticket-report:
+    needs:
+      - deploy
+    if: always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ inputs.head_sha }}
+      RESULT: ${{ needs.deploy.result }}
+    steps:
+      - name: Report to the MakeItOurs outcome workflow
+        run: |
+          # Only a project that has the outcome workflow gets a report.
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/makeitours-outcome.yml?ref=$HEAD_SHA" --silent 2>/dev/null || exit 0
+          case "$RESULT" in success) conclusion=success ;; cancelled) conclusion=cancelled ;; skipped) conclusion=skipped ;; *) conclusion=failure ;; esac
+          gh workflow run makeitours-outcome.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f workflow=pages.yml -f head_sha="$HEAD_SHA" -f conclusion="$conclusion" -f run_id="$GITHUB_RUN_ID"

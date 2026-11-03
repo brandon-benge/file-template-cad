@@ -97,3 +97,25 @@ jobs:
             --verify-tag \
             --generate-notes
 
+  # 2026-11-03: a release a MakeItOurs ticket dispatched reports its result to
+  # makeitours-outcome.yml (a dispatched run fires no workflow_run event).
+  ticket-report:
+    needs:
+      - package
+    if: always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.sha }}
+      RESULT: ${{ needs.package.result }}
+    steps:
+      - name: Report to the MakeItOurs outcome workflow
+        run: |
+          # Only a project that has the outcome workflow gets a report.
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/makeitours-outcome.yml?ref=$HEAD_SHA" --silent 2>/dev/null || exit 0
+          case "$RESULT" in success) conclusion=success ;; cancelled) conclusion=cancelled ;; skipped) conclusion=skipped ;; *) conclusion=failure ;; esac
+          gh workflow run makeitours-outcome.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f workflow=release-template.yml -f head_sha="$HEAD_SHA" -f conclusion="$conclusion" -f run_id="$GITHUB_RUN_ID"

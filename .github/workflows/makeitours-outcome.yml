@@ -13,6 +13,22 @@ on:
       - "Deploy File Template CAD viewer"
     types: [completed]
     branches: [main]
+  # 2026-11-03 (benge-property-cad#26): runs a ticket started fire no workflow_run event, so CI,
+  # the release and the deploy report their own result here.
+  workflow_dispatch:
+    inputs:
+      workflow:
+        description: ci.yml, release-template.yml or pages.yml
+        required: true
+      head_sha:
+        description: The commit on main the run was for
+        required: true
+      conclusion:
+        description: success, failure, cancelled or skipped
+        required: true
+      run_id:
+        description: The reporting run
+        required: true
 
 permissions:
   contents: read
@@ -20,18 +36,18 @@ permissions:
   actions: read
 
 concurrency:
-  group: makeitours-outcome-${{ github.event.workflow_run.head_sha }}
+  group: makeitours-outcome-${{ github.event.workflow_run.head_sha || inputs.head_sha }}
   cancel-in-progress: false
 
 jobs:
   outcome:
     name: Report the MakeItOurs outcome
-    if: github.event.workflow_run.head_repository.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     container:
-      # makeitours-agentic v0.1.81. Updated only by a template commit.
-      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:75e3d26ac94d22d654c6a05f784beba54325cdfa9c555868ea9b51dabba3bbe6
+      # makeitours-agentic v0.1.88. Updated only by a template commit.
+      image: ghcr.io/brandon-benge/makeitours-agentic-runner@sha256:b39fcf1b6ea05b3c77dc5797989a73474a48e549742f33a494ca40df76e8ec32
 
     steps:
       - name: Checkout repository
