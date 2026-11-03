@@ -32,7 +32,8 @@ dependencies) by replacing only its pin and wheel/sdist hashes from PyPI. On 202
 `python-cad-tools==0.1.21` (validation rejects unapplied placements and stacked solids; same dependencies)
 the same way. On 2026-11-02 all four moved to `python-cad-tools==0.1.22` (the canvas-first viewer; same
 dependencies) the same way. On 2026-11-03 all four moved to `python-cad-tools==0.1.23` (the camera captures only
-what is visible on Hosted and opens prebuilt documents on BYOI; same dependencies) the same way. The matching sandbox
+what is visible on Hosted and opens prebuilt documents on BYOI; same dependencies) the same way. On 2026-11-03 all four
+moved to `python-cad-tools==0.1.24` (plainer capture-sheet wording; same dependencies) the same way. The matching sandbox
 image must consume this released lock before hosted builds use it. To regenerate:
 export the image's versions (`docker run --platform linux/amd64 <image> pip
 list --format=freeze`, minus `pip`, `setuptools`, `wheel` and
