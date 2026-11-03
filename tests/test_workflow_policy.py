@@ -152,7 +152,11 @@ def test_ticket_runs_start_the_deploy_and_report_their_outcome():
     pages = (workflows / "pages.yml").read_text()
     assert "workflow_dispatch:" in pages and "head_sha:" in pages
     assert "ref: ${{ github.event.workflow_run.head_sha || inputs.head_sha }}" in pages
-    for name, workflow in [("ci.yml", ci), ("pages.yml", pages), ("release-template.yml", (workflows / "release-template.yml").read_text())]:
+    for name, workflow in [
+        ("ci.yml", ci),
+        ("pages.yml", pages),
+        ("release-template.yml", (workflows / "release-template.yml").read_text()),
+    ]:
         assert f"-f workflow={name}" in workflow, name
         assert "gh workflow run makeitours-outcome.yml" in workflow, name
         assert "actions: write" in workflow, name
