@@ -161,3 +161,31 @@ jobs:
                   sys.exit(1)
           print("All dependencies passed")
         shell: python
+
+  # 2026-11-03 (benge-property-cad#26): a MakeItOurs ticket starts CI with the job's token, and a
+  # run started that way fires no workflow_run event, so neither the site deploy nor the outcome
+  # reply would follow. On such a dispatched run on main, CI starts the deploy itself and reports
+  # its result to makeitours-outcome.yml.
+  ticket-downstream:
+    needs:
+      - required-gate
+    if: always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.sha }}
+      RESULT: ${{ needs.required-gate.result }}
+    steps:
+      - name: Start the site deploy
+        if: needs.required-gate.result == 'success'
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main -f head_sha="$HEAD_SHA"
+      - name: Report to the MakeItOurs outcome workflow
+        run: |
+          # Only a project that has the outcome workflow gets a report.
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/makeitours-outcome.yml?ref=$HEAD_SHA" --silent 2>/dev/null || exit 0
+          case "$RESULT" in success) conclusion=success ;; cancelled) conclusion=cancelled ;; skipped) conclusion=skipped ;; *) conclusion=failure ;; esac
+          gh workflow run makeitours-outcome.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f workflow=ci.yml -f head_sha="$HEAD_SHA" -f conclusion="$conclusion" -f run_id="$GITHUB_RUN_ID"
