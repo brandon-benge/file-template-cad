@@ -451,5 +451,7 @@ def test_python_cad_tools_release_asks_the_pinning_repositories_to_follow():
     assert "if: github.repository == 'brandon-benge/file-template-cad'" in step.split("run: |", 1)[0]
     assert "secrets.MAKEITOURS_FOLLOW_TOKEN" in step
     assert 'repositories="makeitours-agentic"' in step
-    assert 'repositories="makeitours-app makeitours-agentic"' in step.split('if [ "$current" = "$previous" ]; then', 1)[1]
+    assert (
+        'repositories="makeitours-app makeitours-agentic"' in step.split('if [ "$current" = "$previous" ]; then', 1)[1]
+    )
     assert "event_type=cad-template-release" in step
