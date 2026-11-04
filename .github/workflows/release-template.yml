@@ -12,6 +12,11 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      head_sha:
+        description: The commit on main to release (CI passes it after a MakeItOurs ticket); empty releases the dispatched ref
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -28,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # The commit CI passed on (a workflow_run's own SHA is main's latest).
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha || inputs.head_sha || github.sha }}
           fetch-depth: 0
 
       - name: Determine release version
@@ -109,7 +114,7 @@ jobs:
       actions: write
     env:
       GH_TOKEN: ${{ github.token }}
-      HEAD_SHA: ${{ github.sha }}
+      HEAD_SHA: ${{ inputs.head_sha || github.sha }}
       RESULT: ${{ needs.package.result }}
     steps:
       - name: Report to the MakeItOurs outcome workflow

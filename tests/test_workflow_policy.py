@@ -149,6 +149,10 @@ def test_ticket_runs_start_the_deploy_and_report_their_outcome():
     assert "ticket-downstream:" in ci
     assert "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'" in ci
     assert 'gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main -f head_sha="$HEAD_SHA"' in ci
+    # 2026-11-04: the release, too, only once CI passed, so a failing change is never tagged.
+    assert 'gh workflow run release-template.yml --repo "$GITHUB_REPOSITORY" --ref main -f head_sha="$HEAD_SHA"' in ci
+    release = (workflows / "release-template.yml").read_text()
+    assert "ref: ${{ github.event.workflow_run.head_sha || inputs.head_sha || github.sha }}" in release
     pages = (workflows / "pages.yml").read_text()
     assert "workflow_dispatch:" in pages and "head_sha:" in pages
     assert "ref: ${{ github.event.workflow_run.head_sha || inputs.head_sha }}" in pages
