@@ -34,7 +34,8 @@ the same way. On 2026-11-02 all four moved to `python-cad-tools==0.1.22` (the ca
 dependencies) the same way. On 2026-11-03 all four moved to `python-cad-tools==0.1.23` (the camera captures only
 what is visible on Hosted and opens prebuilt documents on BYOI; same dependencies) the same way. On 2026-11-03 all four
 moved to `python-cad-tools==0.1.24` (plainer capture-sheet wording; same dependencies) the same way. On 2026-11-04 all four
-moved to `python-cad-tools==0.1.25` (documents-list file names as written; same dependencies) the same way. The matching sandbox
+moved to `python-cad-tools==0.1.25` (documents-list file names as written; same dependencies) the same way. On 2026-11-04 all four
+moved to `python-cad-tools==0.1.26` (drawing edges drawn solid, not dashed; same dependencies) the same way. The matching sandbox
 image must consume this released lock before hosted builds use it. To regenerate:
 export the image's versions (`docker run --platform linux/amd64 <image> pip
 list --format=freeze`, minus `pip`, `setuptools`, `wheel` and
