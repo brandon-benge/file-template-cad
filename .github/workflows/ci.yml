@@ -182,6 +182,11 @@ jobs:
       - name: Start the site deploy
         if: needs.required-gate.result == 'success'
         run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main -f head_sha="$HEAD_SHA"
+      # 2026-11-04 (data-plane#249): the release, too, only after CI passed, so a failing change
+      # is never tagged. A runner that sees this step no longer dispatches the release itself.
+      - name: Start the release
+        if: needs.required-gate.result == 'success'
+        run: gh workflow run release-template.yml --repo "$GITHUB_REPOSITORY" --ref main -f head_sha="$HEAD_SHA"
       - name: Report to the MakeItOurs outcome workflow
         run: |
           # Only a project that has the outcome workflow gets a report.
