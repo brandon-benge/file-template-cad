@@ -1,5 +1,5 @@
 ---
-description: Design and CAD source maintainer for the File property project.
+description: Design and CAD source maintainer for this CAD project.
 mode: primary
 temperature: 0.1
 ---

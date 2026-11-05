@@ -2,7 +2,6 @@
 name: cad-compatibility-verifier
 description: Independently verify the current project, pinned PyPI CAD package, environment, declared commands, generated file presence, and structural readability without editing source.
 metadata:
-  repository: benge-property-cad
   role: verification
 ---
 

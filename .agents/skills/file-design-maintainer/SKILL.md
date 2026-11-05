@@ -2,7 +2,6 @@
 name: file-design-maintainer
 description: Implement and validate property-specific parametric CAD changes, complex element semantics, labels, metadata, relationships, tests, and supported outputs.
 metadata:
-  repository: benge-property-cad
   role: implementation
 ---
 

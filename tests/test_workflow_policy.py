@@ -455,3 +455,14 @@ def test_python_cad_tools_release_asks_the_pinning_repositories_to_follow():
         'repositories="makeitours-app makeitours-agentic"' in step.split('if [ "$current" = "$previous" ]; then', 1)[1]
     )
     assert "event_type=cad-template-release" in step
+
+
+def test_template_owned_docs_name_no_project():
+    """2026-11-05: every project made from the template gets these files, and the
+    Hosted assistant answered "what is in this project?" from a README titled
+    "Benge Property CAD". The project's own name lives only in config.py."""
+    docs = [PROJECT_ROOT / "README.md", *(PROJECT_ROOT / ".agents").rglob("*.md")]
+    for path in docs:
+        text = path.read_text().lower()
+        assert "benge" not in text, path
+    assert "`PROJECT_NAME` in `config.py`" in (PROJECT_ROOT / "README.md").read_text()

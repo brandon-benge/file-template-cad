@@ -1,9 +1,13 @@
-# Benge Property CAD
+# CAD Project
 
-Parametric CAD model, built with the published
-`python-cad-tools` package. The editable design lives in `config.py`, the
-composition entry point `model.py`, focused geometry modules under `models/`,
-and `drawing_annotations.py`; tests live in `tests/`.
+Parametric CAD model, built with the published `python-cad-tools` package.
+This README is shared by every project made from the template, so it names no
+project: the project's name is `PROJECT_NAME` in `config.py`, and what it models
+is described in `config.py` and the files under `models/`.
+
+The editable design lives in `config.py`, the composition entry point
+`model.py`, focused geometry modules under `models/`, and
+`drawing_annotations.py`; tests live in `tests/`.
 
 A headless build produces STEP, IFC4, GLB, conceptual SVG/DXF/PDF drawings,
 quantity reports, validation reports, and manifests. FreeCAD and Blender are not
