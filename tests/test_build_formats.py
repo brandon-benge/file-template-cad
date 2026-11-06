@@ -1,22 +1,30 @@
-"""Format selection: programmatic API and CLI --format flags.
+"""Format selection through CLI --format flags.
 
-Both tests read the session's shared step+ifc builds (conftest.py): one made
-through the API, one through the CLI with repeated --format flags.
+Both tests read the session's shared CLI step+ifc build (conftest.py), made with
+repeated --format flags. 2026-11-06 (makeitours-data-plane#293): the separate API
+step+ifc build is gone; `build_project(formats=...)` is covered by python-cad-tools'
+own tests, and the CLI passes its --format flags to it.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 
 pytestmark = [pytest.mark.integration]
 
+#: What a build writes besides the selected formats.
+_ALWAYS_WRITTEN = {"manifests"}
 
-def test_build_selected_formats(api_step_ifc_project, identity) -> None:
-    """Programmatic build_project with restricted formats (step+ifc only)."""
-    output = api_step_ifc_project / "generated"
+
+def test_build_selected_formats(cli_step_ifc_project: Path, identity) -> None:
+    """A build restricted to step+ifc writes those formats and no other format directory."""
+    output = cli_step_ifc_project / "generated"
     assert (output / "step" / f"{identity.stem}.step").is_file()
     assert (output / "ifc" / f"{identity.stem}.ifc").is_file()
-    assert not (output / "glb").exists() or not list((output / "glb").rglob("*"))
+    written = {p.name for p in output.iterdir() if p.is_dir() and any(p.rglob("*"))}
+    assert written - _ALWAYS_WRITTEN <= {"step", "ifc"}, f"Unselected formats written: {written}"
 
 
 def test_cli_repeated_format(cli_step_ifc_project, identity) -> None:
