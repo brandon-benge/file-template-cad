@@ -115,6 +115,22 @@ class _CliBuild:
         return self.project
 
 
+#: 2026-11-06 (makeitours-data-plane#293): the test that first asks for a shared build carries
+#: that build's time, and with both builds running together it carries both. The default
+#: per-test limit (120 s, pyproject.toml) failed Benge's release check on a 2-vCPU staging
+#: container, where the two builds share the cores, while each build alone fits. Tests that use
+#: a shared build get this limit instead; every other test keeps the default.
+SHARED_BUILD_TIMEOUT_SECONDS = 600
+_SHARED_BUILD_FIXTURES = ("full_build", "cli_step_ifc_project")
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        fixtures = getattr(item, "fixturenames", ())
+        if any(name in fixtures for name in _SHARED_BUILD_FIXTURES) and item.get_closest_marker("timeout") is None:
+            item.add_marker(pytest.mark.timeout(SHARED_BUILD_TIMEOUT_SECONDS))
+
+
 def _session_uses(session: pytest.Session, fixture: str) -> bool:
     return any(fixture in getattr(item, "fixturenames", ()) for item in session.items)
 
