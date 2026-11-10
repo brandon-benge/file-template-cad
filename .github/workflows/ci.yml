@@ -16,11 +16,55 @@ env:
   PIP_NO_CACHE_DIR: 1
 
 jobs:
+  # 2026-11-10 (file-template-cad#21): GitHub's hosted macOS runners are sometimes unavailable
+  # and cancel queued jobs after about 15 minutes, which blocked publishing. locked-install runs
+  # on macOS, and is then still required, only when pyproject.toml or requirements/ changed
+  # since the last commit whose checks passed (tools/dependency-change).
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      locked_install_os: ${{ steps.select.outputs.locked_install_os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find the commit to compare with
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PULL_BASE: ${{ github.event.pull_request.base.sha }}
+          BRANCH: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          base=""
+          if [ "$EVENT_NAME" = pull_request ]; then
+            base="$PULL_BASE"
+          else
+            # The last commit whose checks passed on this branch, else on the default branch.
+            for branch in "$BRANCH" "$DEFAULT_BRANCH"; do
+              [ -n "$branch" ] || continue
+              base="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=$branch&status=success&per_page=1" \
+                --jq '.workflow_runs[0].head_sha // empty' 2>/dev/null || true)"
+              [ -n "$base" ] && break
+            done
+          fi
+          if [ -n "$base" ]; then git fetch --quiet --depth=1 origin "$base" || true; fi
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
+      - name: Choose the locked-install runners
+        id: select
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+        run: echo "locked_install_os=$(python3 tools/dependency-change "$BASE")" >> "$GITHUB_OUTPUT"
+
   locked-install:
+    needs:
+      - changes
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-latest]
+        os: ${{ fromJSON(needs.changes.outputs.locked_install_os) }}
         python-version: ["3.12", "3.13"]
     runs-on: ${{ matrix.os }}
     steps:
@@ -146,6 +190,9 @@ jobs:
 
   required-gate:
     needs:
+      - changes
+      - locked-install
+      - checks
       - compatibility-report
     if: always()
     runs-on: ubuntu-24.04
@@ -153,12 +200,25 @@ jobs:
       - run: |
           import json, sys
           deps = json.loads(r'''${{ toJSON(needs) }}''')
-          for name, info in deps.items():
-              result = info.get("result", "skipped")
+          results = {name: info.get("result", "skipped") for name, info in deps.items()}
+          for name, result in results.items():
               print(f"{name}: {result}")
-              if result != "success":
-                  print(f"FAILED: {name} did not complete successfully")
-                  sys.exit(1)
+          cancelled = [name for name, result in results.items() if result == "cancelled"]
+          failed = [name for name, result in results.items() if result == "failure"]
+          if failed:
+              print(f"FAILED: {', '.join(failed)} did not pass")
+              sys.exit(1)
+          if cancelled:
+              # A job GitHub cancelled never finished: usually no runner was free (its macOS runners
+              # cancel queued jobs after about 15 minutes), or a newer push replaced this run.
+              print(
+                  f"NOT RUN: GitHub cancelled {', '.join(cancelled)} before it finished, usually because no "
+                  "runner was free. Nothing in the change failed; run the checks again to publish it."
+              )
+              sys.exit(1)
+          if any(result != "success" for result in results.values()):
+              print("FAILED: a required job did not complete successfully")
+              sys.exit(1)
           print("All dependencies passed")
         shell: python
 

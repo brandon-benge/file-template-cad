@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Decide whether CI must prove the locked install on macOS (file-template-cad#21).
+
+Used by .github/workflows/ci.yml's `changes` job. Usage:
+
+  dependency-change [<base commit>]
+
+prints the JSON list of runners the `locked-install` job uses: Linux always, plus
+macOS when `pyproject.toml` or anything under `requirements/` differs between
+<base commit> (the last commit whose checks passed, or a pull request's base) and
+HEAD. With no base, or a base this checkout cannot read, macOS runs too, so a
+dependency change is never published without the macOS check.
+
+GitHub's hosted macOS runners are sometimes unavailable and cancel queued jobs after
+about 15 minutes (2026-11-10, twice on one demo project). Running them only for
+dependency changes keeps a design-only change from waiting on them.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+
+LINUX = "ubuntu-24.04"
+MACOS = "macos-latest"
+DEPENDENCY_PATHS = ("pyproject.toml", "requirements")
+
+
+def changed(base: str) -> tuple[bool, str]:
+    if not base:
+        return True, "no earlier passing commit to compare with"
+    known = subprocess.run(
+        ["git", "cat-file", "-e", f"{base}^{{commit}}"], capture_output=True, check=False
+    )
+    if known.returncode != 0:
+        return True, f"commit {base[:12]} is not available to compare with"
+    diff = subprocess.run(
+        ["git", "diff", "--name-only", base, "HEAD", "--", *DEPENDENCY_PATHS],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if diff.returncode != 0:
+        return True, f"could not compare with {base[:12]}"
+    paths = [line for line in diff.stdout.splitlines() if line.strip()]
+    if paths:
+        return True, f"dependency files changed since {base[:12]}: {', '.join(paths[:5])}"
+    return False, f"no dependency files changed since {base[:12]}"
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) > 2:
+        print(__doc__, file=sys.stderr)
+        return 64
+    needs_macos, reason = changed(argv[1].strip() if len(argv) == 2 else "")
+    print(("macOS check runs: " if needs_macos else "macOS check skipped: ") + reason, file=sys.stderr)
+    print(json.dumps([LINUX, MACOS] if needs_macos else [LINUX]))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

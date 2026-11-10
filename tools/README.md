@@ -16,6 +16,12 @@ automatic; a sister repo can carry an extra script here until it's rerun.
   paths, `generated/` or `.makeitours/audit/`, and never removes the release
   identity. Upgrade Project runs it (2026-10-09 approval,
   project-upgrade-button); nothing runs it automatically.
+- **`dependency-change [<base commit>]`** — used by `ci.yml`'s `changes` job:
+  prints the runners `locked-install` uses. Linux always; macOS too when
+  `pyproject.toml` or `requirements/` changed since the last commit whose
+  checks passed (or a pull request's base), or when there is no base to
+  compare with. GitHub's macOS runners are sometimes unavailable, so a
+  design-only change doesn't wait for them (file-template-cad#21).
 - **`release-identity <archive tree> <tag> <commit> <policy output>`** —
   used by `release-template.yml`: writes `.makeitours/template-release.json`
   (the release a project's infrastructure came from) into the archive, and
