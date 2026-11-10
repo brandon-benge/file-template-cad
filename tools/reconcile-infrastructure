@@ -23,7 +23,7 @@ Usage: reconcile-infrastructure [--plan] [--source] <path-to-file-template-cad>
   --plan    print the changes as JSON ({"schema_version": 1, "changes": [{"path", "action"}]},
             action add | update | remove) and write nothing.
   --source  the template is a plain directory (an extracted release archive), not a git
-            checkout: every file under it except generated/ and .makeitours/audit/ counts.
+            checkout: every file under it except generated/, .makeitours/audit/ and .makeitours/requests/ counts.
 
 Upgrades only (2026-10-09 approval, project-upgrade-button): MakeItOurs no longer runs this
 automatically; Upgrade Project runs it against a verified file-template-cad release.
@@ -58,10 +58,10 @@ def _is_customer_owned(relative_path: str) -> bool:
 def _is_infrastructure(relative_path: str) -> bool:
     if _is_customer_owned(relative_path):
         return False
-    # Disposable build output, and the per-project Git-triggered audit trail (runtime
-    # history, not template content -- .makeitours/schema/ IS template infrastructure and
-    # stays).
-    for prefix in ("generated", ".makeitours/audit"):
+    # Disposable build output, the per-project Git-triggered audit trail, and the images
+    # the app commits for AI requests (runtime history, not template content --
+    # .makeitours/schema/ IS template infrastructure and stays).
+    for prefix in ("generated", ".makeitours/audit", ".makeitours/requests"):
         if relative_path == prefix or relative_path.startswith(prefix + "/"):
             return False
     return True

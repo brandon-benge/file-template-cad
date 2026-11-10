@@ -119,6 +119,22 @@
       "expected": []
     },
     {
+      "name": "request_attachments_are_untouched",
+      "template": {
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n"
+      },
+      "project": {
+        "config.py": "P=1\n",
+        "drawing_annotations.py": "P\n",
+        "model.py": "M=1\n",
+        "models/__init__.py": "",
+        "models/starter_model.py": "S=1\n",
+        "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
+        ".makeitours/requests/FAE6841F-71B4-4167-B0EE-24C002939985/0-Photo%201.png": "not really a png\n"
+      },
+      "expected": []
+    },
+    {
       "name": "release_identity_is_written_from_a_release_and_kept_by_a_checkout",
       "template": {
         "pyproject.toml": "[project]\nname = \"file-template-cad\"\nversion = \"0.1.0\"\n\n[tool.python-cad]\nsource-inputs = [\n  \"config.py\",\n  \"drawing_annotations.py\",\n  \"model.py\",\n  \"models/__init__.py\",\n  \"models/starter_model.py\",\n  \"pyproject.toml\",\n]\n",
