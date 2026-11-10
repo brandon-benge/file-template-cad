@@ -411,11 +411,12 @@ def test_makeitours_workflow_does_not_reconcile_infrastructure_automatically():
     assert reconciler.is_file()
 
     # The reconciler never touches the four customer-owned paths, generated/,
-    # or the per-repo audit trail.
+    # the per-repo audit trail, or the images committed for AI requests.
     reconciler_text = reconciler.read_text()
     assert '_CUSTOMER_TOP_LEVEL = {"config.py", "model.py", "drawing_annotations.py"}' in reconciler_text
     assert "models/" in reconciler_text
     assert '".makeitours/audit"' in reconciler_text
+    assert '".makeitours/requests"' in reconciler_text
 
 
 def test_python_cad_tools_upgrader_agent_retired():
