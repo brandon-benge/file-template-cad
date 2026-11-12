@@ -36,7 +36,9 @@ what is visible on Hosted and opens prebuilt documents on BYOI; same dependencie
 moved to `python-cad-tools==0.1.24` (plainer capture-sheet wording; same dependencies) the same way. On 2026-11-04 all four
 moved to `python-cad-tools==0.1.25` (documents-list file names as written; same dependencies) the same way. On 2026-11-04 all four
 moved to `python-cad-tools==0.1.26` (drawing edges drawn solid, not dashed; same dependencies) the same way. On 2026-11-05 all four
-moved to `python-cad-tools==0.1.27` (parts coloured only by their material show that colour; same dependencies) the same way. The matching sandbox
+moved to `python-cad-tools==0.1.27` (parts coloured only by their material show that colour; same dependencies) the same way. On 2026-11-11 all four
+moved to `python-cad-tools==0.1.30` (viewer realistic-image button with a scene picker, plus a
+materials inventory and layered wall builder; same dependencies) the same way. The matching sandbox
 image must consume this released lock before hosted builds use it. To regenerate:
 export the image's versions (`docker run --platform linux/amd64 <image> pip
 list --format=freeze`, minus `pip`, `setuptools`, `wheel` and
