@@ -1,9 +1,11 @@
 name: makeitours
 
-# A MakeItOurs ticket: the repository owner opens an issue, or comments `/mio` or `/makeitours`
-# on one. makeitours-agentic (in the public runner image, pinned by digest) makes the change,
-# validates it, commits and pushes it with an audit record, starts CI and the release, and
-# comments the outcome or its question on the issue. Model calls go directly to the provider
+# A MakeItOurs ticket: the repository owner or a collaborator with write access opens an issue,
+# or comments `/mio` or `/makeitours` on one (2026-11-13, file-template-cad#27: in BYOI a
+# collaborator's change runs on the owner's AI key and Actions minutes). makeitours-agentic (in
+# the public runner image, pinned by digest) makes the change, validates it, commits and pushes
+# it with an audit record, starts CI and the release, and comments the outcome or its question on
+# the issue. Model calls go directly to the provider
 # chosen in the MakeItOurs app (MAKEITOURS_OPENCODE_MODEL and that provider's key secret).
 on:
   issues:
@@ -11,31 +13,74 @@ on:
   issue_comment:
     types: [created]
 
-concurrency:
-  group: makeitours-${{ github.repository }}
-  queue: max
-  cancel-in-progress: false
-
 permissions:
   contents: write
   issues: write
   actions: write
 
 jobs:
-  makeitours:
-    name: Handle MakeItOurs request
+  # Asks GitHub, on every run, whether the issue's or comment's author may spend the owner's AI
+  # key: write, maintain (reported as write) or admin permission. Read-only and triage members and
+  # anyone else on a public repository start nothing. No container and no secrets, so a stranger's
+  # issue costs seconds. Any API failure refuses (fail closed).
+  authorize:
+    name: Check who sent the request
     if: >
-      github.actor == github.repository_owner &&
+      github.event_name == 'issues' ||
       (
-        github.event_name == 'issues' ||
+        github.event_name == 'issue_comment' &&
         (
-          github.event_name == 'issue_comment' &&
-          (
-            startsWith(github.event.comment.body, '/mio') ||
-            startsWith(github.event.comment.body, '/makeitours')
-          )
+          startsWith(github.event.comment.body, '/mio') ||
+          startsWith(github.event.comment.body, '/makeitours')
         )
       )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - name: Check the author's repository permission
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          allowed=false
+          if [ "$ACTOR" = "$OWNER" ]; then
+            allowed=true
+          elif permission=$(curl --silent --show-error --fail --max-time 20 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/collaborators/$(jq -rn --arg a "$ACTOR" '$a|@uri')/permission" \
+              | jq -r '.permission // "none"'); then
+            case "$permission" in
+              admin|write) allowed=true ;;
+            esac
+          else
+            permission=unavailable
+          fi
+          echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+          if [ "$allowed" = true ]; then
+            echo "MakeItOurs request accepted from a person with write access." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "MakeItOurs request not run: only the owner and collaborators with write access can send changes (${permission:-none})." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  makeitours:
+    name: Handle MakeItOurs request
+    needs: authorize
+    if: needs.authorize.outputs.allowed == 'true'
+    # One non-cancelling queue per repository for real requests only, so strangers' checks never
+    # wait behind (or hold up) a running change.
+    concurrency:
+      group: makeitours-${{ github.repository }}
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     container:
