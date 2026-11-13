@@ -581,3 +581,14 @@ def test_template_owned_docs_name_no_project():
         text = path.read_text().lower()
         assert "benge" not in text, path
     assert "`PROJECT_NAME` in `config.py`" in (PROJECT_ROOT / "README.md").read_text()
+
+
+def test_release_fails_when_the_template_flag_is_off():
+    """2026-11-13: new BYOI projects and Hosted exports use GitHub's /generate API, which needs
+    this repository marked "Template repository"; the release checks it first."""
+    text = (PROJECT_ROOT / ".github" / "workflows" / "release-template.yml").read_text()
+    guard = text.index("Check this repository is still a GitHub template")
+    assert guard < text.index("Determine release version")
+    assert "if: github.repository == 'brandon-benge/file-template-cad'" in text
+    assert "jq -r '.is_template'" in text
+    assert '[ "$is_template" != "true" ]' in text
