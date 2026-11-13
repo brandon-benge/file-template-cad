@@ -30,6 +30,26 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     steps:
+      # 2026-11-13: MakeItOurs creates every new BYOI project and every Hosted export to
+      # GitHub from this repository with GitHub's /generate API, which works only while the
+      # repository is marked "Template repository". The flag was found off that day and every
+      # create failed, so the template's own release fails loudly instead of shipping while
+      # nobody can create a project. Only in the template repository itself: projects carry
+      # this workflow too and are not required to be templates.
+      - name: Check this repository is still a GitHub template
+        if: github.repository == 'brandon-benge/file-template-cad'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          is_template=$(curl --silent --show-error --fail --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY" | jq -r '.is_template')
+          if [ "$is_template" != "true" ]; then
+            echo "::error title=Not a template repository::$GITHUB_REPOSITORY is not marked as a template repository, so MakeItOurs can't create projects from it. Turn on Settings > General > Template repository, then re-run this release."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           # The commit CI passed on (a workflow_run's own SHA is main's latest).
