@@ -127,11 +127,24 @@ jobs:
       # that changes python-cad-tools also asks makeitours-app (the Mac app bundles only the
       # lock). Each opens or updates its pin-bump pull request. Only the template
       # repository sends it; projects carry this workflow as infrastructure.
+      # makeitours#194: a short-lived MakeItOurs CI App token, limited to Contents write on
+      # the two pinning repositories (a repository dispatch needs nothing else), replaces
+      # the stored follow PAT.
+      - name: CI App token for the pinning repositories
+        id: follow_token
+        if: github.repository == 'brandon-benge/file-template-cad' && vars.MIO_CI_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.MIO_CI_APP_ID }}
+          private-key: ${{ secrets.MIO_CI_APP_PRIVATE_KEY }}
+          repositories: makeitours-app,makeitours-agentic
+          permission-contents: write
+
       - name: Ask the pinning repositories to follow this release
         if: github.repository == 'brandon-benge/file-template-cad'
         env:
           GH_TOKEN: ${{ github.token }}
-          FOLLOW_TOKEN: ${{ secrets.MAKEITOURS_FOLLOW_TOKEN }}
+          FOLLOW_TOKEN: ${{ steps.follow_token.outputs.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           current="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["python_cad_tools"])' template-policy.json)"
@@ -149,7 +162,7 @@ jobs:
             repositories="makeitours-app makeitours-agentic"
           fi
           if [ -z "$FOLLOW_TOKEN" ]; then
-            echo "::warning::MAKEITOURS_FOLLOW_TOKEN is not set, so $repositories were not asked to follow $TAG."
+            echo "::warning::MIO_CI_APP_ID is not set, so $repositories were not asked to follow $TAG."
             exit 0
           fi
           for repository in $repositories; do
