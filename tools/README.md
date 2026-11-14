@@ -23,11 +23,14 @@ automatic; a sister repo can carry an extra script here until it's rerun.
   checks passed (or a pull request's base), or when there is no base to
   compare with. GitHub's macOS runners are sometimes unavailable, so a
   design-only change doesn't wait for them (file-template-cad#21).
-- **`release-identity <archive tree> <tag> <commit> <policy output>`** —
+- **`release-identity [--project] <archive tree> <tag> <commit> <policy output>`** —
   used by `release-template.yml`: writes `.makeitours/template-release.json`
   (the release a project's infrastructure came from) into the archive, and
   `template-policy.json` (the latest release, its `python-cad-tools`, and the
   minimum supported release from `.github/release-policy.json`) beside it.
+  In a project made from the template the workflow passes `--project`, which
+  keeps the project's committed `template-release.json` (or none) instead of
+  recording the project's own tag as a template release (file-template-cad#32).
 
 The ticket runner itself is not in this directory: it ships in the public
 `makeitours-agentic-runner` image the workflow pins by digest. It validates
