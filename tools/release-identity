@@ -4,12 +4,17 @@
 Used by .github/workflows/release-template.yml (2026-10-09 approval,
 project-upgrade-button). Usage:
 
-  release-identity <archive tree> <tag> <commit> <policy output>
+  release-identity [--project] <archive tree> <tag> <commit> <policy output>
 
 writes <archive tree>/.makeitours/template-release.json (which release a project's
 infrastructure came from; copied into projects by Upgrade Project) and <policy output>
 (template-policy.json: the latest release and the minimum supported release, from
 .github/release-policy.json).
+
+--project (file-template-cad#32): the release runs in a project made from the template,
+not in the template itself. The project's tag is not a template release, so the archive
+keeps the template-release.json the project already committed (the template release its
+infrastructure came from) and gets none when it has none.
 """
 
 from __future__ import annotations
@@ -24,10 +29,14 @@ TAG = re.compile(r"^v\d+(\.\d+){1,5}$")
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 5:
+    args = argv[1:]
+    project = bool(args) and args[0] == "--project"
+    if project:
+        args = args[1:]
+    if len(args) != 4:
         print(__doc__, file=sys.stderr)
         return 64
-    tree, tag, commit, policy_output = pathlib.Path(argv[1]), argv[2], argv[3], pathlib.Path(argv[4])
+    tree, tag, commit, policy_output = pathlib.Path(args[0]), args[1], args[2], pathlib.Path(args[3])
     if not TAG.match(tag) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         print("release-identity: invalid tag or commit", file=sys.stderr)
         return 64
@@ -36,10 +45,11 @@ def main(argv: list[str]) -> int:
     if not pin:
         print(f"release-identity: no python-cad-tools pin in {LOCK}", file=sys.stderr)
         return 65
-    identity = {"schema_version": 1, "release": tag, "commit": commit, "python_cad_tools": pin.group(1)}
-    target = tree / ".makeitours" / "template-release.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
+    if not project:
+        identity = {"schema_version": 1, "release": tag, "commit": commit, "python_cad_tools": pin.group(1)}
+        target = tree / ".makeitours" / "template-release.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
 
     source = json.loads((tree / ".github" / "release-policy.json").read_text())
     minimum = source.get("minimum_supported")

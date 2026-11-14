@@ -25,8 +25,10 @@ def _tree(tmp_path: Path, minimum: object = None) -> Path:
     return tree
 
 
-def _run(tree: Path, tag: str, out: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([sys.executable, str(TOOL), str(tree), tag, COMMIT, str(out)], capture_output=True, text=True)
+def _run(tree: Path, tag: str, out: Path, *flags: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(TOOL), *flags, str(tree), tag, COMMIT, str(out)], capture_output=True, text=True
+    )
 
 
 def _locked_cad_tools() -> str:
@@ -70,9 +72,33 @@ def test_refuses_a_malformed_tag(tmp_path: Path) -> None:
     assert _run(_tree(tmp_path), "latest", tmp_path / "policy.json").returncode == 64
 
 
+def test_a_project_release_keeps_the_template_release_it_came_from(tmp_path: Path) -> None:
+    """file-template-cad#32: a project's own tag is not a template release."""
+    tree = _tree(tmp_path)
+    record = tree / ".makeitours/template-release.json"
+    record.parent.mkdir()
+    committed = '{"schema_version": 1, "release": "v0.1.0.63", "commit": "' + "b" * 40 + '"}\n'
+    record.write_text(committed)
+    out = tmp_path / "template-policy.json"
+    assert _run(tree, "v0.1.0.1", out, "--project").returncode == 0
+    assert record.read_text() == committed
+    assert json.loads(out.read_text())["latest"] == "v0.1.0.1"
+
+
+def test_a_project_release_without_a_record_invents_none(tmp_path: Path) -> None:
+    tree = _tree(tmp_path)
+    assert _run(tree, "v0.1.0.1", tmp_path / "template-policy.json", "--project").returncode == 0
+    assert not (tree / ".makeitours/template-release.json").exists()
+
+
 def test_the_release_workflow_publishes_the_identity_and_the_policy() -> None:
     workflow = (ROOT / ".github/workflows/release-template.yml").read_text()
-    assert "python3 tools/release-identity staging/file-template-cad" in workflow
+    assert "python3 tools/release-identity $project_flag staging/file-template-cad" in workflow
+    # Only the template repository writes its own tag as the template release.
+    assert (
+        'if [ "$GITHUB_REPOSITORY" != "brandon-benge/file-template-cad" ]; then\n            project_flag="--project"'
+        in workflow
+    )
     assert "--sort=name" in workflow and "gzip -n" in workflow
     for asset in ("template-policy.json", "template-policy.json.sha256"):
         assert workflow.count(asset) >= 2, asset  # uploaded and attached to the release
