@@ -95,7 +95,10 @@ def test_the_release_workflow_publishes_the_identity_and_the_policy() -> None:
     workflow = (ROOT / ".github/workflows/release-template.yml").read_text()
     assert "python3 tools/release-identity $project_flag staging/file-template-cad" in workflow
     # Only the template repository writes its own tag as the template release.
-    assert 'if [ "$GITHUB_REPOSITORY" != "brandon-benge/file-template-cad" ]; then\n            project_flag="--project"' in workflow
+    assert (
+        'if [ "$GITHUB_REPOSITORY" != "brandon-benge/file-template-cad" ]; then\n            project_flag="--project"'
+        in workflow
+    )
     assert "--sort=name" in workflow and "gzip -n" in workflow
     for asset in ("template-policy.json", "template-policy.json.sha256"):
         assert workflow.count(asset) >= 2, asset  # uploaded and attached to the release
