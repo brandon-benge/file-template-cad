@@ -592,3 +592,37 @@ def test_release_fails_when_the_template_flag_is_off():
     assert "if: github.repository == 'brandon-benge/file-template-cad'" in text
     assert "jq -r '.is_template'" in text
     assert '[ "$is_template" != "true" ]' in text
+
+
+# Mirror of makeitours-data-plane packages/contracts/src/planning.ts containsPrivateCredentials.
+# Hosted planning refuses to read a project if any readable file matches it.
+_DATA_PLANE_RESTRICTED = re.compile(
+    "-" * 5 + r"BEGIN .*PRIVATE KEY|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{12,})"
+    r"|(?:password|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*[\"'][^\"']+[\"']"
+    r"|Authorization:\s*(?:Bearer|Basic)\s+\S+",
+    re.IGNORECASE,
+)
+
+
+def test_no_shipped_file_matches_hosted_restricted_data_patterns():
+    """2026-11-14 (file-template-cad#33): v0.1.0.81 shipped a literal bearer-token curl header
+    in two workflows. Hosted's source reader treats that text as a credential, so every Hosted
+    request on the release failed with "Repository context contains restricted data". Send
+    tokens with `curl --oauth2-bearer` instead, and keep every tracked file clear of the pattern."""
+    tracked = (
+        subprocess.run(["git", "ls-files", "-z"], cwd=PROJECT_ROOT, capture_output=True, check=True)
+        .stdout.decode()
+        .split("\0")
+    )
+    offenders = []
+    for rel in filter(None, tracked):
+        path = PROJECT_ROOT / rel
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if _DATA_PLANE_RESTRICTED.search(text):
+            offenders.append(rel)
+    assert offenders == []
