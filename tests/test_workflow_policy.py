@@ -5,6 +5,7 @@ or building the project.
 """
 
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -417,6 +418,77 @@ def test_pages_yml_verify_head_sha():
     text = (PROJECT_ROOT / ".github" / "workflows" / "pages.yml").read_text()
     assert "head_sha" in text
     assert "git rev-parse HEAD" in text or "rev-parse" in text
+
+
+def _pages_job(name: str) -> str:
+    text = (PROJECT_ROOT / ".github" / "workflows" / "pages.yml").read_text()
+    match = re.search(rf"^  {name}:\n(.*?)(?=^  [a-z][a-z-]*:\n|\Z)", text, re.MULTILINE | re.DOTALL)
+    assert match, f"pages.yml has no {name} job"
+    return match.group(1)
+
+
+def test_pages_deploy_job_can_read_a_private_repository():
+    """2026-11-15 (file-template-cad#37): job permissions replace the workflow's, so the deploy
+    job must grant contents: read itself or checkout fails in every private repository."""
+    deploy = _pages_job("deploy")
+    permissions = re.search(r"^    permissions:\n((?:      .*\n)+)", deploy, re.MULTILINE)
+    assert permissions, "the deploy job must declare its permissions"
+    granted = set(re.findall(r"^      ([a-z-]+): (\w+)$", permissions.group(1), re.MULTILINE))
+    assert granted == {("contents", "read"), ("pages", "write"), ("id-token", "write")}
+
+
+def test_pages_deploy_skips_a_private_repository_without_a_site():
+    """A private repository on GitHub Free has no Pages site: the deploy is skipped and a ticket's
+    change still reports as live. A public repository always deploys (a missing site stays red),
+    and an unreadable Pages setting fails instead of skipping."""
+    site = _pages_job("pages-site")
+    assert "PRIVATE: ${{ github.event.repository.private }}" in site
+    assert 'if [ "$PRIVATE" != "true" ]; then' in site
+    assert 'gh api "repos/$GITHUB_REPOSITORY/pages"' in site
+    assert 'grep -q "HTTP 404"' in site and "enabled=false" in site
+    assert "exit 1" in site
+    assert re.search(r"^    permissions:\n      pages: read\n    outputs:", site, re.MULTILINE)
+    deploy = _pages_job("deploy")
+    assert "if: needs.pages-site.outputs.enabled == 'true'" in deploy
+    report = _pages_job("ticket-report")
+    assert "- pages-site" in report and "- deploy" in report
+    assert 'if [ "$SITE" = success ] && [ "$SITE_ENABLED" = false ]; then RESULT=success; fi' in report
+    assert 'if [ "$SITE" != success ] && [ "$SITE" != skipped ]; then RESULT=failure; fi' in report
+
+
+def test_pages_site_check_script_behaviour(tmp_path):
+    """Runs the site check's shell with a stub gh for each case."""
+    site = _pages_job("pages-site")
+    script = re.search(r"run: \|\n((?:          .*\n|\n)+)", site)
+    assert script
+    body = "\n".join(line[10:] for line in script.group(1).splitlines())
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "gh").write_text(
+        '#!/bin/sh\nif [ "$GH_CASE" = ok ]; then echo workflow; exit 0; fi\n'
+        'if [ "$GH_CASE" = missing ]; then echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi\n'
+        'echo "gh: Server Error (HTTP 500)" >&2; exit 1\n'
+    )
+    (stub / "gh").chmod(0o755)
+
+    def run(private: str, case: str):
+        output = tmp_path / f"out-{private}-{case}"
+        output.write_text("")
+        env = {
+            **os.environ,
+            "PATH": f"{stub}:{os.environ['PATH']}",
+            "PRIVATE": private,
+            "GH_CASE": case,
+            "GITHUB_OUTPUT": str(output),
+            "GITHUB_REPOSITORY": "owner/project",
+        }
+        result = subprocess.run(["bash", "-e", "-c", body], env=env, capture_output=True, text=True)
+        return result.returncode, output.read_text().strip()
+
+    assert run("false", "error") == (0, "enabled=true")
+    assert run("true", "ok") == (0, "enabled=true")
+    assert run("true", "missing") == (0, "enabled=false")
+    assert run("true", "error")[0] == 1
 
 
 def test_opencode_is_fully_retired():
