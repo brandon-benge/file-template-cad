@@ -24,16 +24,52 @@ env:
   PIP_NO_CACHE_DIR: 1
 
 jobs:
-  deploy:
+  # 2026-11-15 (file-template-cad#37): a private repository on GitHub Free has no Pages site,
+  # so its deploy is skipped instead of failing on every change. A public repository always
+  # deploys, so a site that was never turned on still shows a red run there.
+  pages-site:
     if: >
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pages: read
+    outputs:
+      enabled: ${{ steps.site.outputs.enabled }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PRIVATE: ${{ github.event.repository.private }}
+    steps:
+      - id: site
+        name: Check for a Pages site
+        run: |
+          if [ "$PRIVATE" != "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if out=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type 2>&1); then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$out" | grep -q "HTTP 404"; then
+            echo "::notice title=No live site::This private repository has no GitHub Pages site, so the site deploy is skipped. Private repositories need a paid GitHub plan for a live site."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Could not read the GitHub Pages settings: $out"
+            exit 1
+          fi
+
+  deploy:
+    needs:
+      - pages-site
+    if: needs.pages-site.outputs.enabled == 'true'
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    # Job permissions replace the workflow's, so checkout of a private repository needs contents: read.
     permissions:
+      contents: read
       pages: write
       id-token: write
     steps:
@@ -70,6 +106,7 @@ jobs:
   # A deploy CI started after a MakeItOurs ticket reports its result to makeitours-outcome.yml.
   ticket-report:
     needs:
+      - pages-site
       - deploy
     if: always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
@@ -80,11 +117,16 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       HEAD_SHA: ${{ inputs.head_sha }}
       RESULT: ${{ needs.deploy.result }}
+      SITE: ${{ needs.pages-site.result }}
+      SITE_ENABLED: ${{ needs.pages-site.outputs.enabled }}
     steps:
       - name: Report to the MakeItOurs outcome workflow
         run: |
           # Only a project that has the outcome workflow gets a report.
           gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/makeitours-outcome.yml?ref=$HEAD_SHA" --silent 2>/dev/null || exit 0
+          # A private repository without a site has nothing to publish: its change is live.
+          if [ "$SITE" = success ] && [ "$SITE_ENABLED" = false ]; then RESULT=success; fi
+          if [ "$SITE" != success ] && [ "$SITE" != skipped ]; then RESULT=failure; fi
           case "$RESULT" in success) conclusion=success ;; cancelled) conclusion=cancelled ;; skipped) conclusion=skipped ;; *) conclusion=failure ;; esac
           gh workflow run makeitours-outcome.yml --repo "$GITHUB_REPOSITORY" --ref main \
             -f workflow=pages.yml -f head_sha="$HEAD_SHA" -f conclusion="$conclusion" -f run_id="$GITHUB_RUN_ID"
