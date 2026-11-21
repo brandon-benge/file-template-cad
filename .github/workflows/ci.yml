@@ -1,7 +1,9 @@
 name: File Template CAD CI
 
 on:
+  # CI runs on pull requests and on pushes to main only (bundle 23).
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
